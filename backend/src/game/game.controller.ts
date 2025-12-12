@@ -44,8 +44,6 @@ export class GameController {
   @Get('player/me')
   async getMyProfile(@User() userId: string) {
     // 👇 LOGS DE DÉBOGAGE
-    console.log("🔍 [CONTROLLER] Route /game/player/me appelée");
-    console.log("🔑 [CONTROLLER] ID reçu via @User() :", userId);
 
     if (!userId) {
         console.error("❌ [CONTROLLER] ERREUR : L'ID est undefined ou null !");
@@ -55,7 +53,6 @@ export class GameController {
     
     // On loggue le résultat avant de l'envoyer
     if (result) {
-        console.log("✅ [CONTROLLER] Données trouvées pour :", result.pseudo);
     } else {
         console.error("⚠️ [CONTROLLER] Service a renvoyé null/undefined");
     }

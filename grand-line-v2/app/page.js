@@ -378,20 +378,7 @@ export default function Home() {
                 </div>
                 <LogoutButton />
                 {/* 🔥 BOUTON DEBUG POUR DEVELOPPEUR */}
-<button 
-    onClick={async () => {
-        if (!window.confirm("⚠️ ATTENTION : Ceci va effacer toute ta progression pour tester le tuto. Continuer ?")) return;
-        try {
-            await api.post('/game/debug/reset', { userId: joueur.id });
-            window.location.reload(); // On recharge la page pour relancer le tuto
-        } catch (e) {
-            console.error(e);
-        }
-    }}
-    className="mt-4 w-full py-2 bg-red-900/50 text-red-400 text-xs font-bold rounded border border-red-800 hover:bg-red-900 hover:text-white transition uppercase"
->
-    ♻️ Reset Tuto (Dev)
-</button>
+
             </div>
 
             {/* === DROITE : ZONE DE JEU (Pleine largeur sur Mobile quand actif) === */}

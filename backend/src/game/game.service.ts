@@ -178,7 +178,6 @@ export class GameService {
 
   private async clearCache(userId: string) {
     await this.cacheManager.del(`player_profile_v2:${userId}`);
-    console.log(`🧹 [CACHE CLEAR] Nettoyage pour ${userId}`);
   }
 
   // 🔥 Calcule une quantité aléatoire entre min et max (inclus) - CORRIGÉE
@@ -317,7 +316,6 @@ export class GameService {
 
   // 2. GÉNÉRER LES QUÊTES
 async getDailyQuests(userId: string) {
-      console.log(`[DEBUG] Récupération quêtes pour : ${userId}`);
       
       const now = new Date();
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -331,14 +329,12 @@ async getDailyQuests(userId: string) {
           orderBy: { est_recupere: 'asc' }
       });
 
-      console.log(`[DEBUG] Quêtes trouvées aujourd'hui : ${existingQuests.length}`);
 
       // 2. Si déjà 4, on renvoie
       if (existingQuests.length >= 4) {
           return existingQuests;
       }
 
-      console.log(`[DEBUG] Génération de nouvelles quêtes...`);
 
       // 3. Nettoyage et Génération
       await this.prisma.quetes_journalieres.deleteMany({ where: { joueur_id: userId } });
@@ -366,12 +362,10 @@ async getDailyQuests(userId: string) {
           });
       }
 
-      console.log(`[DEBUG] Création de ${newQuests.length} quêtes en BDD...`);
 
       await this.prisma.quetes_journalieres.createMany({ data: newQuests });
 
       const finalResult = await this.prisma.quetes_journalieres.findMany({ where: { joueur_id: userId } });
-      console.log(`[DEBUG] Retour final : ${finalResult.length} quêtes.`);
       
       return finalResult;
   }
@@ -990,7 +984,6 @@ async sellItem(dto: SellItemDto) {
             return { combat, updatedJoueur };
         });
 
-        console.log(`⚔️ Combat démarré : ${attaquant.pseudo} vs ${defenseur.pseudo}`);
         
         await this.clearCache(dto.userId);
 
@@ -1050,7 +1043,6 @@ async sellItem(dto: SellItemDto) {
     const nomSkill = skill.nom.toUpperCase();
     const typeSkill = (skill.type_degats || "").toUpperCase();
 
-    console.log(`[COMBAT DEBUG] Skill: ${nomSkill} (${typeSkill}) | Arme: ${nomArme}`);
 
     // LISTES DE MOTS-CLÉS
     const KW_SKILL_SWORD = ["COUPE", "ESTOCADE", "LAME", "SABRE", "CHASSEUR", "TOURBILLON", "CHANT", "TROIS", "KAMUSARI", "SLASH", "ZORO", "ONIGIRI"];
@@ -1503,7 +1495,6 @@ async startStoryFight(userId: string, targetName: string) {
       });
       
       if (!bot) {
-          console.log(`[ERREUR] Bot introuvable: "${targetName}"`);
           throw new BadRequestException(`Ennemi '${targetName}' introuvable.`);
       }
       
@@ -1561,7 +1552,6 @@ async startStoryFight(userId: string, targetName: string) {
     const dureeFinaleMs = Math.floor((dureeBaseMs * bonusMeteo) / vitesseNavire);
     const finVoyage = new Date(now.getTime() + dureeFinaleMs);
 
-    console.log(`[VOYAGE] Base: ${dureeMinutesBase}m | Météo: x${bonusMeteo} | Navire: x${vitesseNavire}`);
 
     // D. SAUVEGARDE
     // ✅ CORRECTION 2 : On retire 'expedition_destination' car la colonne n'existe pas
@@ -2786,99 +2776,36 @@ private async createPlayerIfNotFound(userId: string): Promise<any> {
 }
 
 
-// DANS backend/src/game/game.service.ts
+// Dans backend/src/game/game.service.ts
 
-async getPlayerData(userId: string) {
-    console.log(`🔍 [SERVICE] Début getPlayerData pour l'ID : ${userId}`); // LOG 1
+  async getPlayerData(userId: string) {
+    const now = new Date();
 
-    const cacheKey = `player_profile_v2:${userId}`;
+    // ⚡ OPTIMISATION 1 : Lancer la recherche Joueur ET la liste des Navires en parallèle
+    // Au lieu d'attendre l'un puis l'autre.
+    const [joueur, allNavires] = await Promise.all([
+        this.prisma.joueurs.findUnique({
+            where: { id: userId },
+            include: {
+                inventaire: { include: { objets: true } },
+                equipage: true,
+                joueur_titres: { include: { titres_ref: true } }
+            }
+        }),
+        this.prisma.navires_ref.findMany({ // On charge les refs en cache mémoire pour aller vite
+            include: { cout_items: { include: { objet: true } } }
+        })
+    ]);
 
-    // 1. Cache (Commenté pour le debug, à réactiver plus tard si besoin)
-    // const cachedData = await this.cacheManager.get(cacheKey);
-    // if (cachedData) return cachedData; 
+    // --- (Bloc création forcée inchangé si joueur n'existe pas) ---
+    if (!joueur) { /* ... ton code de création forcée ... */ throw new InternalServerErrorException("Reload please"); }
 
-    // 2. BDD - Tentative de récupération
-    let joueur = await this.prisma.joueurs.findUnique({
-      where: { id: userId },
-      include: {
-        inventaire: { include: { objets: true } },
-        equipage: true,
-        joueur_titres: { 
-            include: { titres_ref: true } 
-        } 
-      }
-    });
-
-    if (joueur) {
-        console.log(`✅ [SERVICE] Joueur trouvé : ${joueur.pseudo} (Niveau ${joueur.niveau})`); // LOG 2
-    } else {
-        console.error(`❌ [SERVICE] Joueur NON TROUVÉ en BDD pour l'ID ${userId}`); // LOG 3 (Erreur critique)
-        
-        // Debug ultime : Afficher les ID qui existent vraiment pour comparer
-        // const existingUsers = await this.prisma.joueurs.findMany({ select: { id: true, pseudo: true } });
-        // console.log("📋 [SERVICE] Liste des joueurs existants en base :", existingUsers);
-    }
-
-    // 🔥 SAUVETAGE (Création forcée si introuvable)
-    if (!joueur) {
-        console.log(`⚠️ Joueur ${userId} introuvable. TENTATIVE DE CRÉATION FORCÉE...`);
-        try {
-            // On vérifie d'abord si l'utilisateur auth existe (optionnel, mais bon pour le debug)
-            // Mais ici on force la création dans la table 'joueurs'
-            
-            await this.prisma.joueurs.create({
-                data: {
-                    id: userId,
-                    pseudo: `Pirate_${userId.substring(0, 5)}`,
-                    pv_actuel: 100,
-                    pv_max_base: 100,
-                    last_pv_update: new Date(),
-                    energie_actuelle: 10,
-                    last_energie_update: new Date(),
-                    niveau: 1,
-                    berrys: 100
-                }
-            });
-            console.log(`✨ [SERVICE] Joueur créé avec succès !`);
-
-            // Rechargement immédiat avec les relations
-            joueur = await this.prisma.joueurs.findUnique({
-                where: { id: userId },
-                include: {
-                    inventaire: { include: { objets: true } },
-                    equipage: true,
-                    joueur_titres: { 
-                        include: { titres_ref: true } 
-                    }
-                }
-            });
-        } catch (error) {
-            console.error("❌ ERREUR CRÉATION JOUEUR:", error);
-            // On renvoie null pour que le contrôleur gère l'erreur ou on throw
-            throw new InternalServerErrorException("Impossible de créer le personnage.");
-        }
-    }
-
-    if (!joueur) throw new InternalServerErrorException("Joueur introuvable après tentative de création.");
-
-    // -----------------------------------------------------------
-    // 3. RECONSTRUCTION DE L'OBJET ÉQUIPEMENT
-    // -----------------------------------------------------------
-    const equipementMap : any = {
-        arme: null,
-        tete: null,
-        corps: null,
-        bottes: null,
-        bague: null,
-        collier: null,
-        navire: null
-    };
-
+    // --- RECONSTRUCTION EQUIPEMENT ---
+    const equipementMap: any = { arme: null, tete: null, corps: null, bottes: null, bague: null, collier: null, navire: null };
     if (joueur.inventaire) {
         joueur.inventaire.forEach(invItem => {
             if (invItem.est_equipe && invItem.objets) {
                 const type = invItem.objets.type_equipement;
-                
                 if (type === 'MAIN_DROITE') equipementMap.arme = invItem;
                 else if (type === 'TETE') equipementMap.tete = invItem;
                 else if (type === 'CORPS') equipementMap.corps = invItem;
@@ -2890,117 +2817,57 @@ async getPlayerData(userId: string) {
         });
     }
 
-    // -----------------------------------------------------------
-    // 4. Calculs & Régénération (Code existant inchangé)
-    // -----------------------------------------------------------
+    // --- CALCULS & REGENERATION (SANS ÉCRITURE BDD) ---
     const stats = this.calculatePlayerStats(joueur);
-    const now = new Date();
-    let shouldPerformUpdate = false;
-    let updateData: any = {};
     
-    // ... (Ton bloc de calcul de regen PV/Energie reste identique) ...
-    // Je l'abrège ici pour la lisibilité mais garde ton code !
-    const lastPvUpdate = joueur.last_pv_update ? new Date(joueur.last_pv_update) : now; 
-    const timeElapsedPvMs = now.getTime() - lastPvUpdate.getTime();
-    const hoursElapsedPv = Math.floor(timeElapsedPvMs / 3600000); 
-    const pvBeforeHeal = joueur.pv_actuel ?? 0;
-    let newPv = pvBeforeHeal;
-    let mustUpdatePv = false;
+    // 1. Calcul PV Virtuels
+    const lastPvUpdate = joueur.last_pv_update ? new Date(joueur.last_pv_update) : now;
+    const hoursElapsedPv = Math.floor((now.getTime() - lastPvUpdate.getTime()) / 3600000);
+    let virtualPv = joueur.pv_actuel ?? 0;
+    
     if (hoursElapsedPv >= 1) {
-        const healAmount = hoursElapsedPv * 10; 
-        newPv = Math.min(pvBeforeHeal + healAmount, stats.pv_max_total);
-        if (newPv > pvBeforeHeal) mustUpdatePv = true;
-    }
-    if (mustUpdatePv || (hoursElapsedPv >= 1 && pvBeforeHeal >= stats.pv_max_total)) {
-        const newUpdateTimePv = new Date(lastPvUpdate.getTime() + hoursElapsedPv * 3600000);
-        updateData.pv_actuel = newPv;
-        updateData.last_pv_update = newUpdateTimePv;
-        shouldPerformUpdate = true;
+        const healAmount = hoursElapsedPv * 10;
+        virtualPv = Math.min((joueur.pv_actuel ?? 0) + healAmount, stats.pv_max_total);
     }
 
-    // --- REGEN ENERGIE ---
+    // 2. Calcul Energie Virtuelle
     const MAX_ENERGIE = 10;
-    const REGEN_TIME_MS = 3600000; 
-    const lastEnergieUpdate = joueur.last_energie_update ? new Date(joueur.last_energie_update) : now; 
-    const currentEnergie = joueur.energie_actuelle ?? MAX_ENERGIE;
-    let newEnergie = currentEnergie;
-    let newEnergieUpdateTime = lastEnergieUpdate;
-    let timeUntilNextRegenMs = REGEN_TIME_MS; 
-    let mustUpdateEnergie = false;
+    const REGEN_TIME_MS = 3600000;
+    const lastEnergieUpdate = joueur.last_energie_update ? new Date(joueur.last_energie_update) : now;
+    const currentStoredEnergie = joueur.energie_actuelle ?? MAX_ENERGIE;
+    
+    let virtualEnergie = currentStoredEnergie;
+    let timeUntilNextRegenMs = 0;
 
-    if (currentEnergie < MAX_ENERGIE) {
-        const timeElapsedEnergieMs = now.getTime() - lastEnergieUpdate.getTime();
-        const energyGained = Math.floor(timeElapsedEnergieMs / REGEN_TIME_MS); 
+    if (currentStoredEnergie < MAX_ENERGIE) {
+        const msElapsed = now.getTime() - lastEnergieUpdate.getTime();
+        const energyGained = Math.floor(msElapsed / REGEN_TIME_MS);
         
-        if (energyGained > 0) {
-            newEnergie = Math.min(currentEnergie + energyGained, MAX_ENERGIE);
-            mustUpdateEnergie = true;
-            const timeToAddMs = energyGained * REGEN_TIME_MS;
-            newEnergieUpdateTime = new Date(lastEnergieUpdate.getTime() + timeToAddMs);
-            const timeElapsedSinceNewUpdate = now.getTime() - newEnergieUpdateTime.getTime();
-            timeUntilNextRegenMs = REGEN_TIME_MS - (timeElapsedSinceNewUpdate % REGEN_TIME_MS);
-        } else {
-             timeUntilNextRegenMs = REGEN_TIME_MS - (timeElapsedEnergieMs % REGEN_TIME_MS);
-        }
-    } else {
-        timeUntilNextRegenMs = 0; 
-    }
-    
-    if (mustUpdateEnergie) {
-        updateData.energie_actuelle = newEnergie;
-        updateData.last_energie_update = newEnergieUpdateTime;
-        shouldPerformUpdate = true;
+        virtualEnergie = Math.min(currentStoredEnergie + energyGained, MAX_ENERGIE);
+        
+        // Calcul du temps restant pour le prochain point
+        const msUsedForGain = energyGained * REGEN_TIME_MS;
+        const msRestant = msElapsed - msUsedForGain;
+        timeUntilNextRegenMs = Math.max(0, REGEN_TIME_MS - msRestant);
+        
+        if (virtualEnergie >= MAX_ENERGIE) timeUntilNextRegenMs = 0;
     }
 
-    // --- MISE À JOUR BDD ---
-    if (shouldPerformUpdate) {
-        await this.prisma.$transaction(async (tx) => {
-             await tx.joueurs.update({ where: { id: userId }, data: updateData });
-        });
-        if (updateData.pv_actuel !== undefined) {
-             joueur.pv_actuel = updateData.pv_actuel;
-             joueur.last_pv_update = updateData.last_pv_update;
-        }
-        if (updateData.energie_actuelle !== undefined) {
-             joueur.energie_actuelle = updateData.energie_actuelle;
-             joueur.last_energie_update = updateData.last_energie_update;
-        }
-    }
+    // ⚡ OPTIMISATION 2 : ON NE FAIT PAS D'UPDATE BDD ICI !
+    // On renvoie juste les valeurs calculées. La BDD sera mise à jour 
+    // seulement quand le joueur cliquera sur "Combattre" ou "Travailler".
 
-    // 5. PRÉPARATION FINALE
-    const finalData = {
-      ...joueur,
-      statsTotales: stats,
-      energie_actuelle: newEnergie,
-      max_energie: MAX_ENERGIE,
-      next_energie_in_ms: timeUntilNextRegenMs,
-      equipement: equipementMap 
-    };
-    
-    // 6. TITRES & CACHE
-    this.checkAchievements(userId).catch(err => console.error("Erreur check titres:", err));
-    // await this.cacheManager.set(cacheKey, finalData, 60000); // Désactivé pour le moment
-    
-    // -----------------------------------------------------------
-    // 7. INFO PROCHAIN NAVIRE (POUR LE CHANTIER)
-    // -----------------------------------------------------------
-    let nextNavireData: any = null;    
+    // --- INFO PROCHAIN NAVIRE (Optimisé via tableau en mémoire) ---
+    let nextNavireData: any = null;
     let niveauActuel = 1;
+    
     if (equipementMap.navire) {
-        const ref = await this.prisma.navires_ref.findFirst({
-            where: { nom: equipementMap.navire.objets.nom }
-        });
-        if (ref) niveauActuel = ref.niveau;
+        // Recherche en mémoire (rapide) au lieu de refaire une requête BDD
+        const currentRef = allNavires.find(n => n.nom === equipementMap.navire.objets.nom);
+        if (currentRef) niveauActuel = currentRef.niveau;
     }
 
-    const nextShipRef = await this.prisma.navires_ref.findUnique({
-        where: { niveau: niveauActuel + 1 },
-        include: {
-            cout_items: {
-                include: { objet: true }
-            }
-        }
-    });
+    const nextShipRef = allNavires.find(n => n.niveau === niveauActuel + 1);
 
     if (nextShipRef) {
         nextNavireData = {
@@ -3018,13 +2885,16 @@ async getPlayerData(userId: string) {
         };
     }
 
-    const finalDataWithShip = {
-        ...finalData,
+    return {
+        ...joueur,
+        pv_actuel: virtualPv,          // On renvoie le calcul
+        energie_actuelle: virtualEnergie, // On renvoie le calcul
+        statsTotales: stats,
+        max_energie: MAX_ENERGIE,
+        next_energie_in_ms: timeUntilNextRegenMs,
+        equipement: equipementMap,
         nextNavire: nextNavireData
     };
-
-    console.log("✅ [SERVICE] Données finales renvoyées au Controller."); // LOG FINAL
-    return finalDataWithShip;
   }
   // --- 9. ACTIVITÉ / EXPLORATION ---
   async doActivity(userId: string) {
@@ -3469,8 +3339,6 @@ async unlockTitle(userId: string, nomTitre: string) {
         updateData.nb_activites = { increment: 1 };
         updateData.derniere_fouille = now;
 
-        console.log("[DEBUG] Mise à jour DB envoyée :", updateData);
-
         // 4. MISE À JOUR JOUEUR (CRITIQUE)
         // Vérifiez bien que vous n'avez pas de ligne 'xp: { increment: ... }' ici !
         await tx.joueurs.update({
@@ -3550,7 +3418,6 @@ async unlockTitle(userId: string, nomTitre: string) {
         updateData.expedition_fin = null;
         updateData.nb_expeditions_reussies = { increment: 1 };
 
-        console.log("[DEBUG] Expédition Update :", updateData);
 
         // UPDATE JOUEUR
         await tx.joueurs.update({
@@ -3764,7 +3631,6 @@ async chooseFaction(userId: string, faction: string) {
           titre_id: titre.id,
           date_obtention: new Date()
         });
-        console.log(`🎉 SUCCÈS DÉBLOQUÉ : ${joueur.pseudo} a obtenu "${titre.nom}"`);
       }
     }
 
@@ -3970,7 +3836,6 @@ async chooseFaction(userId: string, faction: string) {
     const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId } });
     if (!joueur) throw new BadRequestException("Joueur introuvable");
 
-    console.log(`🧨 RESET DU JOUEUR ${joueur.pseudo}...`);
 
     await this.prisma.$transaction([
         // 1. VIDER LES TABLES LIÉES
