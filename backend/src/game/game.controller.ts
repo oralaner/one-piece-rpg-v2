@@ -40,13 +40,29 @@ export class GameController {
   async equipTitle(@Body() body: { userId: string, titre: string | null }) {
     return this.gameService.equipTitle(body.userId, body.titre);
   }
-
-  @Get('player/me')
   @UseGuards(AuthGuard('jwt'))
-  getMyProfile(@User() userId: string) {
-    return this.gameService.getPlayerData(userId);
-  }
+  @Get('player/me')
+  async getMyProfile(@User() userId: string) {
+    // 👇 LOGS DE DÉBOGAGE
+    console.log("🔍 [CONTROLLER] Route /game/player/me appelée");
+    console.log("🔑 [CONTROLLER] ID reçu via @User() :", userId);
 
+    if (!userId) {
+        console.error("❌ [CONTROLLER] ERREUR : L'ID est undefined ou null !");
+    }
+
+    const result = await this.gameService.getPlayerData(userId);
+    
+    // On loggue le résultat avant de l'envoyer
+    if (result) {
+        console.log("✅ [CONTROLLER] Données trouvées pour :", result.pseudo);
+    } else {
+        console.error("⚠️ [CONTROLLER] Service a renvoyé null/undefined");
+    }
+
+    return result;
+  }
+  
   @Post('activity')
   @UseGuards(AuthGuard('jwt'))
   faireActivite(@User() userId: string) {

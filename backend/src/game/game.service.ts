@@ -2789,9 +2789,11 @@ private async createPlayerIfNotFound(userId: string): Promise<any> {
 // DANS backend/src/game/game.service.ts
 
 async getPlayerData(userId: string) {
+    console.log(`🔍 [SERVICE] Début getPlayerData pour l'ID : ${userId}`); // LOG 1
+
     const cacheKey = `player_profile_v2:${userId}`;
 
-    // 1. Cache
+    // 1. Cache (Commenté pour le debug, à réactiver plus tard si besoin)
     // const cachedData = await this.cacheManager.get(cacheKey);
     // if (cachedData) return cachedData; 
 
@@ -2800,18 +2802,30 @@ async getPlayerData(userId: string) {
       where: { id: userId },
       include: {
         inventaire: { include: { objets: true } },
-        // 🚨 CORRECTION ICI : on ne charge plus les colonnes 'equip_arme' etc. car elles n'existent plus
         equipage: true,
         joueur_titres: { 
-            include: { titres_ref: true } // 👈 C'est ici ! 'titres_ref' au lieu de 'titre'
+            include: { titres_ref: true } 
         } 
       }
     });
 
+    if (joueur) {
+        console.log(`✅ [SERVICE] Joueur trouvé : ${joueur.pseudo} (Niveau ${joueur.niveau})`); // LOG 2
+    } else {
+        console.error(`❌ [SERVICE] Joueur NON TROUVÉ en BDD pour l'ID ${userId}`); // LOG 3 (Erreur critique)
+        
+        // Debug ultime : Afficher les ID qui existent vraiment pour comparer
+        // const existingUsers = await this.prisma.joueurs.findMany({ select: { id: true, pseudo: true } });
+        // console.log("📋 [SERVICE] Liste des joueurs existants en base :", existingUsers);
+    }
+
     // 🔥 SAUVETAGE (Création forcée si introuvable)
     if (!joueur) {
-        console.log(`⚠️ Joueur ${userId} introuvable. CRÉATION FORCÉE...`);
+        console.log(`⚠️ Joueur ${userId} introuvable. TENTATIVE DE CRÉATION FORCÉE...`);
         try {
+            // On vérifie d'abord si l'utilisateur auth existe (optionnel, mais bon pour le debug)
+            // Mais ici on force la création dans la table 'joueurs'
+            
             await this.prisma.joueurs.create({
                 data: {
                     id: userId,
@@ -2825,6 +2839,7 @@ async getPlayerData(userId: string) {
                     berrys: 100
                 }
             });
+            console.log(`✨ [SERVICE] Joueur créé avec succès !`);
 
             // Rechargement immédiat avec les relations
             joueur = await this.prisma.joueurs.findUnique({
@@ -2833,17 +2848,18 @@ async getPlayerData(userId: string) {
                     inventaire: { include: { objets: true } },
                     equipage: true,
                     joueur_titres: { 
-                        include: { titres_ref: true } // 👈 Ici aussi
+                        include: { titres_ref: true } 
                     }
                 }
             });
         } catch (error) {
             console.error("❌ ERREUR CRÉATION JOUEUR:", error);
+            // On renvoie null pour que le contrôleur gère l'erreur ou on throw
             throw new InternalServerErrorException("Impossible de créer le personnage.");
         }
     }
 
-    if (!joueur) throw new InternalServerErrorException("Joueur introuvable.");
+    if (!joueur) throw new InternalServerErrorException("Joueur introuvable après tentative de création.");
 
     // -----------------------------------------------------------
     // 3. RECONSTRUCTION DE L'OBJET ÉQUIPEMENT
@@ -2858,7 +2874,6 @@ async getPlayerData(userId: string) {
         navire: null
     };
 
-    // Maintenant TypeScript acceptera l'assignation
     if (joueur.inventaire) {
         joueur.inventaire.forEach(invItem => {
             if (invItem.est_equipe && invItem.objets) {
@@ -2876,28 +2891,26 @@ async getPlayerData(userId: string) {
     }
 
     // -----------------------------------------------------------
-    // 4. Calculs & Régénération
+    // 4. Calculs & Régénération (Code existant inchangé)
     // -----------------------------------------------------------
     const stats = this.calculatePlayerStats(joueur);
     const now = new Date();
     let shouldPerformUpdate = false;
     let updateData: any = {};
     
-    // --- REGEN PV ---
+    // ... (Ton bloc de calcul de regen PV/Energie reste identique) ...
+    // Je l'abrège ici pour la lisibilité mais garde ton code !
     const lastPvUpdate = joueur.last_pv_update ? new Date(joueur.last_pv_update) : now; 
     const timeElapsedPvMs = now.getTime() - lastPvUpdate.getTime();
     const hoursElapsedPv = Math.floor(timeElapsedPvMs / 3600000); 
-
     const pvBeforeHeal = joueur.pv_actuel ?? 0;
     let newPv = pvBeforeHeal;
     let mustUpdatePv = false;
-
     if (hoursElapsedPv >= 1) {
         const healAmount = hoursElapsedPv * 10; 
         newPv = Math.min(pvBeforeHeal + healAmount, stats.pv_max_total);
         if (newPv > pvBeforeHeal) mustUpdatePv = true;
     }
-    
     if (mustUpdatePv || (hoursElapsedPv >= 1 && pvBeforeHeal >= stats.pv_max_total)) {
         const newUpdateTimePv = new Date(lastPvUpdate.getTime() + hoursElapsedPv * 3600000);
         updateData.pv_actuel = newPv;
@@ -2910,7 +2923,6 @@ async getPlayerData(userId: string) {
     const REGEN_TIME_MS = 3600000; 
     const lastEnergieUpdate = joueur.last_energie_update ? new Date(joueur.last_energie_update) : now; 
     const currentEnergie = joueur.energie_actuelle ?? MAX_ENERGIE;
-    
     let newEnergie = currentEnergie;
     let newEnergieUpdateTime = lastEnergieUpdate;
     let timeUntilNextRegenMs = REGEN_TIME_MS; 
@@ -2967,42 +2979,25 @@ async getPlayerData(userId: string) {
     
     // 6. TITRES & CACHE
     this.checkAchievements(userId).catch(err => console.error("Erreur check titres:", err));
-    await this.cacheManager.set(cacheKey, finalData, 60000);
+    // await this.cacheManager.set(cacheKey, finalData, 60000); // Désactivé pour le moment
     
     // -----------------------------------------------------------
     // 7. INFO PROCHAIN NAVIRE (POUR LE CHANTIER)
     // -----------------------------------------------------------
     let nextNavireData: any = null;    
-    // On trouve le niveau actuel (1 par défaut si pas de navire équipé)
-    // On utilise ton mapping 'equipementMap' qu'on a fait juste avant
-    const currentShipLevel = equipementMap.navire?.objets?.niveau 
-        ? equipementMap.navire.objets.niveau // Si l'objet a une propriété niveau (dépend de ton seed/model)
-        : (equipementMap.navire ? parseInt(equipementMap.navire.objets.nom.split(' ')[1] || "1") : 1); 
-        // ⚠️ Astuce : Si tu n'as pas stocké le niveau dans l'objet, on assume 1. 
-        // Le mieux est de se baser sur la table navires_ref.
-    
-    // Correction plus propre : On cherche le niveau via le nom ou une table de correspondance
-    // Mais pour faire simple ici, disons qu'on récupère le niveau suivant :
-    
-    // On va chercher dans la table de référence quel est le prochain niveau
-    // Supposons que le joueur est niveau X, on cherche le navire niveau X+1
-    
-    // Petite requête pour trouver le niveau actuel basé sur l'objet équipé
     let niveauActuel = 1;
     if (equipementMap.navire) {
-        // On cherche le navire_ref correspondant au nom de l'objet équipé
         const ref = await this.prisma.navires_ref.findFirst({
             where: { nom: equipementMap.navire.objets.nom }
         });
         if (ref) niveauActuel = ref.niveau;
     }
 
-    // On récupère les infos du niveau SUIVANT
     const nextShipRef = await this.prisma.navires_ref.findUnique({
         where: { niveau: niveauActuel + 1 },
         include: {
             cout_items: {
-                include: { objet: true } // On veut le nom et l'image des ingrédients
+                include: { objet: true }
             }
         }
     });
@@ -3012,9 +3007,8 @@ async getPlayerData(userId: string) {
             niveau: nextShipRef.niveau,
             nom: nextShipRef.nom,
             description: nextShipRef.description,
-            cout_berrys: Number(nextShipRef.prix_berrys), // Conversion BigInt
+            cout_berrys: Number(nextShipRef.prix_berrys),
             image_url: nextShipRef.image_url,
-            // On formate la liste pour le frontend
             listeMateriaux: nextShipRef.cout_items.map(cout => ({
                 id: cout.objet.id,
                 nom: cout.objet.nom,
@@ -3024,13 +3018,12 @@ async getPlayerData(userId: string) {
         };
     }
 
-    // On l'ajoute à la réponse finale
     const finalDataWithShip = {
         ...finalData,
         nextNavire: nextNavireData
     };
 
-
+    console.log("✅ [SERVICE] Données finales renvoyées au Controller."); // LOG FINAL
     return finalDataWithShip;
   }
   // --- 9. ACTIVITÉ / EXPLORATION ---
