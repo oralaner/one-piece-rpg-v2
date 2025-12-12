@@ -14,11 +14,8 @@ import { PlayTurnDto } from './play-turn.dto'; // Import du DTO combat
 
 @WebSocketGateway({
   cors: {
-    origin: [
-      'http://localhost:3000',
-      'https://one-piece-rpg-v2.vercel.app', // Ton URL Vercel EXACTE (sans slash à la fin)
-      process.env.FRONTEND_URL // Pour utiliser la variable d'env Railway
-    ],
+    origin: '*', // 🔓 On ouvre tout pour tester (production : mettre l'URL Vercel)
+    methods: ['GET', 'POST'],
     credentials: true,
   },
 })

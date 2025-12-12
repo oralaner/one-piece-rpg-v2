@@ -12,16 +12,10 @@ async function bootstrap() {
   
   // 1. GESTION DES CORS (Qui a le droit de parler au backend ?)
   // En prod, on veut être précis pour que les cookies/auth fonctionnent bien.
-  app.enableCors({
-    origin: [
-      'http://localhost:3000',      // Ton Frontend local
-      'http://localhost:3001',      // Au cas où
-      process.env.FRONTEND_URL,     // L'URL Vercel qu'on définira dans les variables d'environnement
-      // Tu peux aussi ajouter l'URL en dur si tu la connais déjà :
-      // 'https://ton-projet-v2.vercel.app' 
-    ],
+app.enableCors({
+    origin: true, // 🔓 Autorise toutes les origines (équivalent à *)
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true, // Important pour les sessions/cookies/sockets
+    credentials: true,
   });
 
   // 2. PORT DYNAMIQUE (Crucial pour Railway !)
