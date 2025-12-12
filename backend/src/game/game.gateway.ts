@@ -14,12 +14,13 @@ import { PlayTurnDto } from './play-turn.dto'; // Import du DTO combat
 
 @WebSocketGateway({
   cors: {
-    origin: '*', // Accepte tout le monde
-    methods: ['GET', 'POST'],
+    origin: [
+      'http://localhost:3000',
+      'https://one-piece-rpg-v2.vercel.app', // Ton URL Vercel EXACTE (sans slash à la fin)
+      process.env.FRONTEND_URL // Pour utiliser la variable d'env Railway
+    ],
     credentials: true,
   },
-  // 👇 AJOUTE ÇA SI CE N'EST PAS DÉJÀ LÀ
-  transports: ['polling', 'websocket'], 
 })
 export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
