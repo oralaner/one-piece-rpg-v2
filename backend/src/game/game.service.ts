@@ -470,7 +470,7 @@ async getPlayerData(userId: string, discordPseudo?: string, discordAvatar?: stri
                 data: {
                     id: userId,
                     pseudo: finalPseudo, 
-                    avatar_url: discordAvatar || null, // ✅ On sauvegarde l'avatar Discord !
+                    avatar_url: discordAvatar || null,
                     
                     // Stats de départ
                     pv_actuel: 100,
@@ -478,17 +478,21 @@ async getPlayerData(userId: string, discordPseudo?: string, discordAvatar?: stri
                     last_pv_update: new Date(),
                     energie_actuelle: 10,
                     last_energie_update: new Date(),
+                    
                     niveau: 1,
-                    berrys: 100,
                     xp: 0,
-                    points_carac: 0,
-                    force: 1,
-                    defense: 1,
-                    vitalite: 1,
-                    sagesse: 1,
-                    chance: 1,
-                    agilite: 1,
-                    intelligence: 1,
+                    berrys: 100,
+
+                    // 👇 C'EST ICI QUE ÇA CHANGE
+                    points_carac: 5, // ✅ On donne 5 points pour le Tuto
+                    
+                    force: 0,        // 0 partout ailleurs
+                    defense: 0,
+                    vitalite: 0,
+                    sagesse: 0,
+                    chance: 0,
+                    agilite: 0,
+                    intelligence: 0,
                 }
             });
 
