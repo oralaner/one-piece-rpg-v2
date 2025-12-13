@@ -14,9 +14,12 @@ import { PlayTurnDto } from './play-turn.dto'; // Import du DTO combat
 
 @WebSocketGateway({
   cors: {
-    origin: 'true', // 🔓 On ouvre tout
+    // 👇 IDEM : URL VERCEL EXACTE
+    origin: [
+      'https://one-piece-rpg-v2.vercel.app', 
+      'http://localhost:3000'
+    ],
     methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   },
 })

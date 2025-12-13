@@ -11,12 +11,13 @@ export const useSocket = (session, activeTab, crewId) => {
     useEffect(() => {
         if (!session?.user?.id) return;
 
-        const newSocket = io(SOCKET_URL, {
-            query: { userId: session.user.id },
-            transports: ['polling', 'websocket'],
-            withCredentials: true, // Important pour la compatibilité
-            reconnectionAttempts: 5,
-        });
+        const newSocket = io(process.env.NEXT_PUBLIC_API_URL, {
+  transports: ['websocket'], // 👈 OBLIGATOIRE : Force le mode WebSocket direct
+  withCredentials: true,     // OBLIGATOIRE : Pour l'auth
+  query: {
+    userId: user?.id
+  }
+});
 
         setSocket(newSocket);
 

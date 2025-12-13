@@ -5,10 +5,13 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // 👇 CONFIGURATION CORS PERMISSIVE
-  app.enableCors({
-    origin: 'true', // Autorise toutes les origines (Vercel, Localhost, etc.)
+app.enableCors({
+    // 👇 METS TON URL VERCEL EXACTE ICI (sans slash à la fin)
+    origin: [
+      'https://one-piece-rpg-v2.vercel.app', 
+      'http://localhost:3000' // Garde localhost pour tes tests chez toi
+    ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: 'Content-Type, Accept, Authorization',
     credentials: true,
   });
 
