@@ -7,7 +7,7 @@ import { GameGateway } from './game.gateway';
 import { StoryService } from './story.service';
 
 @Module({
-  imports: [AuthModule], // <--- AJOUTE ÇA ICI !
+  imports: [AuthModule, GameModule], // <--- AJOUTE ÇA ICI !
   controllers: [GameController],
   providers: [GameService, PrismaService, GameGateway, StoryService],
   exports: [GameService, StoryService]

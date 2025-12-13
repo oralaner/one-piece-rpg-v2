@@ -13,7 +13,8 @@ export const useSocket = (session, activeTab, crewId) => {
 
         const newSocket = io(SOCKET_URL, {
             query: { userId: session.user.id },
-            transports: ['polling', 'websocket'], // Important pour la compatibilité
+            transports: ['polling', 'websocket'],
+            withCredentials: true, // Important pour la compatibilité
             reconnectionAttempts: 5,
         });
 

@@ -29,12 +29,18 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly prisma: PrismaService
   ) {}
 
-  handleConnection(client: Socket) {
-    // console.log(`🔌 Client connecté : ${client.id}`);
+afterInit(server: Server) {
+    console.log('✅ Socket.io Initialisé !');
+  }
+
+  handleConnection(client: Socket, ...args: any[]) {
+    console.log(`🔌 Client connecté : ${client.id}`);
+    // Logs pour déboguer les Query params
+    console.log('Query:', client.handshake.query);
   }
 
   handleDisconnect(client: Socket) {
-    // console.log(`❌ Client déconnecté`);
+    console.log(`❌ Client déconnecté : ${client.id}`);
   }
 
   // --- GESTION DES SALLES (ROOMS) ---
