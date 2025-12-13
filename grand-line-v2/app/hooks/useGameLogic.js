@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { usePlayerData } from './usePlayerData';
-import { useQuery, useQueryClient } from '@tanstack/react-query'; // Assurez-vous que useQueryClient est importé
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../utils/api';
 
 // Modules
@@ -16,12 +16,10 @@ import { usePlayerActions } from './usePlayerActions';
 import { useAllItems } from './useAllItems';
 
 export const useGameLogic = () => {
-    // ✅ CORRECTION : Déclaration indispensable
     const queryClient = useQueryClient(); 
 
     // --- 1. ÉTATS GLOBAUX ---
     const [session, setSession] = useState(null);
-    const [notification, setNotification] = useState(null);
     const [notificationState, setNotificationState] = useState(null);
     const [activeTab, setActiveTab] = useState(null);
     const [rewardModal, setRewardModal] = useState(null);
@@ -46,42 +44,39 @@ export const useGameLogic = () => {
     const { 
         data: playerData, 
         isLoading: isLoadingData, 
-        refetch: rafraichirDonnees 
+        refetch: rafraichirDonnees,
+        isNewPlayer // ✅ MODIFICATION 1 : On récupère le signal "Nouveau Joueur"
     } = usePlayerData(session?.user?.id);
 
     // Variables dérivées
     const joueur = playerData || null;
-    const equipement = playerData?.equipement || { arme: null, tete: null, corps: null, bottes: null, bague: null, collier: null, navire: null };
-    const inventaire = playerData?.inventaire || [];
-    const statsTotales = playerData?.statsTotales || null; 
-
+    // const equipement = ... (déplacé plus bas pour être sûr)
+    
     // --- 4. UTILITAIRES ---
     const notify = (input, type = "info") => {
-    let message = "";
-    let notificationType = type;
-    let data = null; // Pour stocker les données spéciales (comme newTitleUnlocked)
+        let message = "";
+        let notificationType = type;
+        let data = null;
 
-    if (typeof input === 'string') {
-        message = input;
-    } else if (input && typeof input.message === 'string') {
-        // C'est une réponse typique de mutation (ex: { success: true, message: "..." })
-        message = input.message;
-        notificationType = input.type || type;
-        data = input; // On stocke l'objet complet
-    } else {
-        message = "Action terminée.";
-    }
+        if (typeof input === 'string') {
+            message = input;
+        } else if (input && typeof input.message === 'string') {
+            message = input.message;
+            notificationType = input.type || type;
+            data = input; 
+        } else {
+            message = "Action terminée.";
+        }
 
-    // Mise à jour de l'état de notification avec toutes les infos
-    setNotificationState({ 
-        message, 
-        type: notificationType, 
-        data 
-    });
-    
-    // Effacer après 4 secondes
-    setTimeout(() => setNotificationState(null), 4000);
-};
+        setNotificationState({ 
+            message, 
+            type: notificationType, 
+            data 
+        });
+        
+        setTimeout(() => setNotificationState(null), 4000);
+    };
+
     // --- 5. MOTEUR DU CHRONO (Voyage) ---
     useEffect(() => {
         if (!joueur) return;
@@ -184,7 +179,7 @@ export const useGameLogic = () => {
 
     // I. CATALOGUE GLOBAL D'OBJETS 📚
     const {
-        allItemDefinitions, isLoadingAllItems
+        allItemDefinitions
     } = useAllItems(session?.user?.id);
 
     // --- FONCTION SPÉCIALE : COMBAT HISTOIRE ---
@@ -200,7 +195,6 @@ export const useGameLogic = () => {
                 
                 const combatData = await api.get(`/game/combat/current/${joueur.id}`);
                 
-                // ✅ Maintenant queryClient est défini !
                 queryClient.setQueryData(['activeFight', session?.user?.id], combatData);
 
                 if (setCombatSession) {
@@ -232,11 +226,20 @@ export const useGameLogic = () => {
     //                        RETURN
     // =========================================================
     return {
-        session, joueur, loading: isLoadingData, notification, activeTab, setActiveTab, 
+        session, 
+        joueur, 
+        loading: isLoadingData, 
+        isNewPlayer, // ✅ MODIFICATION 2 : On renvoie l'info à l'interface !
+        
+        notification: notificationState, 
+        activeTab, setActiveTab, 
         rewardModal, setRewardModal,
-        statsTotales, equipement, inventaire, levelUpData,
+        statsTotales: playerData?.statsTotales, 
+        equipement: playerData?.equipement, 
+        inventaire: playerData?.inventaire || [], 
+        levelUpData,
         setLevelUpData,
-        setNotification, 
+        setNotification: setNotificationState, // Alias pour compatibilité
         
         // Modules
         monEquipage, membresEquipage, banqueLogs, candidatures, listeEquipages, crewAction, 
@@ -260,11 +263,12 @@ export const useGameLogic = () => {
         leaderboardType, setLeaderboardType, changerLeaderboard,
         mesTitres, showTitresModal, setShowTitresModal, changerTitre, chargerTitres,
         
-        investirStat, tempsRestant, explorationLoading, clickActivite, fetchJoueur: rafraichirDonnees, meteoData, notification: notificationState,
+        investirStat, tempsRestant, explorationLoading, clickActivite, fetchJoueur: rafraichirDonnees, meteoData,
         notify,
         
         lancerCombatHistoire,
 
+        // Sécurité pour l'objet joueur s'il est null
         joueur: playerData ? {
             ...playerData,
             energie_actuelle: playerData.energie_actuelle,
@@ -272,8 +276,6 @@ export const useGameLogic = () => {
             last_energie_update: playerData.last_energie_update
         } : null,
 
-        equipement: playerData?.equipement,
         navireRef: playerData?.nextNavire, 
-        inventaire: playerData?.inventaire || [],
     };
 };

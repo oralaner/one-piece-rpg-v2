@@ -2,22 +2,38 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../utils/api';
 
 export const usePlayerData = (userId) => {
-    // Note: userId n'est plus utilisé dans l'URL car le token suffit, 
-    // mais on le garde pour la clé de cache ("enabled").
-
     const { data, isLoading, error, refetch } = useQuery({
-        queryKey: ['playerData', userId], // Clé unique pour le cache
+        queryKey: ['playerData', userId],
         
-        // 👇 C'est ici que ça change : on appelle la nouvelle route
-        queryFn: () => api.get('/game/player/me'),
+        queryFn: async () => {
+            // On fait la requête normalement
+            const res = await api.get('/game/player/me');
+            return res.data; // On retourne les données si tout va bien
+        },
         
-        // On ne lance la requête que si on est connecté
-        enabled: !!userId, 
+        enabled: !!userId,
         
-        // Options de confort
-        staleTime: 1000 * 60, // Considère les données "fraîches" pendant 1 minute
-        refetchOnWindowFocus: true // Rafraîchit quand on revient sur l'onglet
+        // 👇 CRUCIAL : On configure le comportement en cas d'erreur
+        retry: (failureCount, error) => {
+            // Si l'erreur est 404 (Joueur introuvable), on ne réessaie PAS.
+            if (error?.response?.status === 404) return false;
+            // Sinon (erreur 500, réseau...), on réessaie 3 fois max
+            return failureCount < 3;
+        },
+
+        staleTime: 1000 * 60,
+        refetchOnWindowFocus: true
     });
 
-    return { data, isLoading, error, refetch };
+    // 👇 On crée un "drapeau" facile à utiliser pour le reste de l'app
+    // Si l'erreur est 404, alors isNewPlayer devient VRAI
+    const isNewPlayer = error?.response?.status === 404;
+
+    return { 
+        data, 
+        isLoading, 
+        error, 
+        refetch,
+        isNewPlayer // ✅ Nouvelle variable à utiliser dans ton interface !
+    };
 };

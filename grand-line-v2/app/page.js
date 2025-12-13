@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react"; // ✅ Ajout de useEffect
+import { useState, useEffect } from "react";
 import { useGameLogic } from "./hooks/useGameLogic";
 import { supabase } from "./lib/supabaseClient";
 import { getRankInfo, getFactionTheme, formatTemps } from "./utils/gameUtils";
@@ -38,13 +38,13 @@ export default function Home() {
     const queryClient = useQueryClient();
     const game = useGameLogic();
     
-    // Déstructuration complète pour éviter les oublis
+    // Déstructuration complète
     const { 
         joueur, statsTotales, activeTab, 
         inventaire, equipement,
         
-        // 👇 AJOUTEZ CES DEUX LIGNES 👇
         levelUpData, setLevelUpData, 
+        isNewPlayer, // ✅ AJOUT CRUCIAL ICI
 
         // Actions Inventaire
         ouvrirModaleVente, confirmerVente, annulerVente, sellModalItem,
@@ -55,13 +55,9 @@ export default function Home() {
         showRaidModal, setShowRaidModal
     } = game;
 
-    // État pour le Menu Mobile
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-    
-    // État pour la quantité à vendre
     const [sellQuantity, setSellQuantity] = useState(1);
 
-    // ✅ EFFET : Réinitialiser la quantité à 1 à l'ouverture d'une modale
     useEffect(() => {
         if (sellModalItem || marketSellItem) {
             setSellQuantity(1);
@@ -73,11 +69,9 @@ export default function Home() {
     const xpMax = joueur ? Math.floor(100 * Math.pow(joueur.niveau, 1.5)) : 100;
     const rankInfo = getRankInfo(joueur?.elo_pvp || 0);
     
-    // Calcul PV Max dynamique
     const vitaliteTotale = statsTotales?.vitalite || joueur?.vitalite || 0;
     const pvMaxCalcul = statsTotales?.pv_max_total || 100;
     
-    // 🔒 FONCTION DE VERROUILLAGE
     // 🔒 FONCTION DE VERROUILLAGE
     const isTabLocked = (tabId) => {
         if (!joueur) return true;
@@ -86,47 +80,30 @@ export default function Home() {
         const etape = joueur.etape_actuelle;
         const niv = joueur.niveau;
 
-        // Petite fonction pour simplifier la lecture :
-        // "Est-ce que je suis avant ce chapitre/étape ?"
         const isBefore = (targetChap, targetStep) => {
-            if (chap < targetChap) return true; // Chapitre précédent -> Bloqué
-            if (chap === targetChap && etape < targetStep) return true; // Même chapitre mais étape pas atteinte -> Bloqué
-            return false; // Sinon -> Débloqué
+            if (chap < targetChap) return true;
+            if (chap === targetChap && etape < targetStep) return true;
+            return false;
         };
 
         switch (tabId) {
-            // --- TOUJOURS DISPONIBLES ---
             case 'aventure': 
             case 'tchat': 
             case 'classement': 
                 return false;
-
-            // --- CHAPITRE 1 ---
             case 'stats':      return isBefore(1, 3);
             case 'inventaire': return isBefore(1, 5);
             case 'deck':       return isBefore(1, 7);
-
-            // --- CHAPITRE 2 ---
-            // Débloqués dès le début du Chap 2 (Fin du Chap 1)
             case 'chantier': 
             case 'expeditions': 
                 return chap < 2; 
-
-            // Débloqué à l'étape 3 du Chap 2 (Tuto Potion)
             case 'boutique':   return isBefore(2, 3);
-
-            // --- CHAPITRE 3 ---
-            case 'marche':     return isBefore(3, 3); // HDV
-            case 'casino':     return isBefore(3, 4); // Casino
-            case 'arene':      return isBefore(3, 5); // Arène
-
-            // --- CHAPITRE 4 ---
-            case 'atelier':    return isBefore(4, 4); // Craft (Outils + Chanvre)
-
-            // --- NIVEAUX (End Game / Social) ---
-            case 'equipage':   return niv < 10; // Création de guilde
-            case 'haki':       return niv < 50; // Haki
-
+            case 'marche':     return isBefore(3, 3);
+            case 'casino':     return isBefore(3, 4);
+            case 'arene':      return isBefore(3, 5);
+            case 'atelier':    return isBefore(4, 4);
+            case 'equipage':   return niv < 10;
+            case 'haki':       return niv < 50;
             default: return false;
         }
     };
@@ -164,14 +141,34 @@ export default function Home() {
             </div>
         </main>
     );
+
+    // ✅ CAS 1 : JOUEUR INEXISTANT (Erreur 404 du Backend)
+    // On affiche l'écran de création
+    if (isNewPlayer) {
+        return (
+            <FactionSelector 
+                userId={game.session.user.id} 
+                onSelect={() => {
+                    // Une fois créé, on invalide le cache pour recharger les données (qui ne seront plus 404)
+                    queryClient.invalidateQueries(['playerData']);
+                    // On peut aussi forcer un reload au cas où
+                    setTimeout(() => window.location.reload(), 500);
+                }} 
+            />
+        );
+    }
+
+    // CAS 2 : JOUEUR CHARGÉ MAIS DONNÉES INCOMPLÈTES (Backup)
     if (joueur && !joueur.faction) {
             return (
                 <FactionSelector 
-                    userId={joueur.id} // ✅ On utilise l'ID du joueur déjà chargé
+                    userId={joueur.id} 
                     onSelect={() => queryClient.invalidateQueries(['playerData'])} 
                 />
             );
-        }
+    }
+
+    // CAS 3 : CHARGEMENT EN COURS
     if (!joueur) return <div className="flex h-screen items-center justify-center text-cyan-400 font-black animate-pulse">Chargement...</div>;
     
     // --- LISTE DES ONGLETS (Configuration) ---
@@ -193,34 +190,20 @@ export default function Home() {
         { id: 'tchat', icon: '💬', label: 'Tchat' },
     ];
 
-    // Fonction de calcul de probabilité (Basée sur les vrais niveaux)
     const calculerChance = (typeRaid) => {
-        // Si pas de membres chargés, 0%
         if (!game.membresEquipage || game.membresEquipage.length === 0) return 0;
-
-        // 1. Somme des niveaux de TOUTE l'alliance (Potentiel max si tout le monde vient)
         const sommeNiveaux = game.membresEquipage.reduce((acc, membre) => acc + (membre.niveau || 1), 0);
-        
-        // 2. Bonus de synergie (Si tout le monde vient)
         const nbMembres = game.membresEquipage.length;
         const bonusSynergie = 1 + (nbMembres * 0.05);
-
         const puissanceTotale = sommeNiveaux * bonusSynergie;
-
-        // 3. Seuils (DOIVENT ÊTRE IDENTIQUES AU BACKEND)
         const SEUILS = { 1: 15, 2: 60, 3: 150 };
         const seuil = SEUILS[typeRaid];
-
-        // 4. Calcul %
         let pourcentage = (puissanceTotale / seuil) * 100;
-        
         if (pourcentage > 100) pourcentage = 100;
         if (pourcentage < 0) pourcentage = 0;
-
         return Math.floor(pourcentage);
     };
     
-    // Fonction helper pour la couleur
     const getColor = (pct) => {
         if (pct < 30) return "text-red-500";
         if (pct < 70) return "text-yellow-500";
@@ -246,33 +229,28 @@ export default function Home() {
                     const notification = game.notification;
                     const isNewTitle = notification.data && notification.data.newTitleUnlocked;
                     
-                    // Déterminer le style
                     let styleClass = '';
                     let icon = '';
 
                     if (isNewTitle) {
-                        // Style spécial Titre débloqué
                         styleClass = 'bg-yellow-900/95 border-yellow-500 text-yellow-100 shadow-[0_0_20px_rgba(255,255,0,0.6)] animate-pulse-slow';
                         icon = '🏆';
                     } else if (notification.type === 'error') {
-                        // Style Erreur
                         styleClass = 'bg-red-900/95 border-red-500 text-red-100';
                         icon = '⚠️';
                     } else {
-                        // Style Succès par défaut
                         styleClass = 'bg-emerald-900/95 border-emerald-500 text-emerald-100';
                         icon = '✅';
                     }
 
-                    // 🔥 NOTE : Assurez-vous d'avoir l'animation 'animate-pulse-slow' dans votre tailwind.config.js (voir réponse précédente)
                     return (
                         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[9999] px-6 py-3 rounded-xl shadow-2xl border backdrop-blur-md font-bold animate-bounce-in flex items-center gap-3 w-11/12 md:w-auto justify-center ${styleClass}`}>
                             <span>{icon}</span>
                             <span>{notification.message}</span>
                         </div>
                     );
-                })()}             
-            {/* === COLONNE GAUCHE : PROFIL (Fixe sur PC, Scrollable en haut sur Mobile) === */}
+                })()}              
+            {/* === COLONNE GAUCHE : PROFIL === */}
             <div className={`md:w-[350px] md:h-full md:shrink-0 p-2 md:p-4 z-10 flex flex-col ${activeTab ? 'hidden md:flex' : 'flex h-full'}`}>
                 <div className={`flex-1 overflow-y-auto custom-scrollbar rounded-3xl p-4 md:p-6 shadow-2xl relative border-2 ${currentTheme.panel} ${currentTheme.border}`}>
                     
@@ -355,14 +333,14 @@ export default function Home() {
                             ) : (<p className="text-[9px] italic text-slate-600">Aucun bonus de panoplie.</p>)}
                         </div>
                     {/* Équipement (Grille compacte) */}
-                        <div className="grid grid-cols-3 gap-1 mb-3 justify-items-center bg-black/20 p-1 rounded-xl border border-white/5"> {/* gap-1, p-1 */}                        
-                        <EquipSlot type="Tête" item={equipement.tete} onUnequip={game.desequiperObjet} theme={currentTheme} />
-                        <EquipSlot type="Corps" item={equipement.corps} onUnequip={game.desequiperObjet} theme={currentTheme} />
-                        <EquipSlot type="Arme" item={equipement.arme} onUnequip={game.desequiperObjet} theme={currentTheme} />
-                        <EquipSlot type="Bottes" item={equipement.bottes} onUnequip={game.desequiperObjet} theme={currentTheme} />
-                        <EquipSlot type="Bague" item={equipement.bague} onUnequip={game.desequiperObjet} theme={currentTheme} />
-                        <EquipSlot type="Collier" item={equipement.collier} onUnequip={game.desequiperObjet} theme={currentTheme} />
-                    </div>
+                        <div className="grid grid-cols-3 gap-1 mb-3 justify-items-center bg-black/20 p-1 rounded-xl border border-white/5"> 
+                            <EquipSlot type="Tête" item={equipement.tete} onUnequip={game.desequiperObjet} theme={currentTheme} />
+                            <EquipSlot type="Corps" item={equipement.corps} onUnequip={game.desequiperObjet} theme={currentTheme} />
+                            <EquipSlot type="Arme" item={equipement.arme} onUnequip={game.desequiperObjet} theme={currentTheme} />
+                            <EquipSlot type="Bottes" item={equipement.bottes} onUnequip={game.desequiperObjet} theme={currentTheme} />
+                            <EquipSlot type="Bague" item={equipement.bague} onUnequip={game.desequiperObjet} theme={currentTheme} />
+                            <EquipSlot type="Collier" item={equipement.collier} onUnequip={game.desequiperObjet} theme={currentTheme} />
+                        </div>
 
                     <div className="text-center py-2 border-t border-slate-700/50 mb-2">
                         <span className="text-2xl font-black text-yellow-400 font-pirata">{joueur.berrys.toLocaleString()}</span>
@@ -466,26 +444,24 @@ export default function Home() {
                             setLevelUpData={setLevelUpData} // 👈 LA CLÉ
                         />
                           )}
-                         
+                          
                         {activeTab === 'inventaire' && (
                             <InventoryTab 
                                 inventaire={inventaire}
-                                joueur={joueur}                 
-                                theme={currentTheme}            
-                                onUse={game.utiliserObjet}      
-                                onEquip={game.equiperObjet}     
-                                onSell={game.vendreObjet}       
+                                joueur={joueur}                  
+                                theme={currentTheme}             
+                                onUse={game.utiliserObjet}       
+                                onEquip={game.equiperObjet}      
+                                onSell={game.vendreObjet}        
                                 ouvrirModaleVente={ouvrirModaleVente} 
                             />
-                        )}                      
+                        )}                       
                         {activeTab === 'boutique' && (
                             <ShopTab 
                                 items={game.boutiqueItems} 
                                 onBuy={game.acheterObjet} 
                                 theme={currentTheme}
                                 joueur={joueur}
-                                // 👇 CORRECTION : On passe l'inventaire directement depuis l'objet joueur
-                                // Cela garantit que dès que 'joueur' est mis à jour après un achat, le shop le sait.
                                 inventaire={inventaire}
                             />
                         )}
@@ -495,7 +471,7 @@ export default function Home() {
                                 berrys={joueur.berrys} 
                                 onPlay={game.jouerCasino}
                                 cooldowns={game.cooldowns || {}} 
-                                casinoState={game.casinoState}   
+                                casinoState={game.casinoState}    
                             />
                         )}            
                         {activeTab === 'combat_actif' && (game.combatSession || game.combatRewards) && (
@@ -550,13 +526,13 @@ export default function Home() {
                         {activeTab === 'chantier' && (
                         <ShipyardTab 
                             navire={equipement?.navire?.objets} 
-                            nextNavire={game.navireRef}         
+                            nextNavire={game.navireRef}          
                             onUpgrade={game.ameliorerNavire} 
                             theme={currentTheme} 
                             berryCount={joueur.berrys} 
                             inventaire={game.inventaire} 
                         />
-                    )}                 
+                    )}                  
                         {activeTab === 'atelier' && (
                             <CraftTab 
                                 recettes={game.recettes} 
@@ -587,7 +563,6 @@ export default function Home() {
                             filter={game.areneFilter}
                             setFilter={game.setAreneFilter}
                             
-                            // 👇 AJOUTEZ CES LIGNES 👇
                             energy={joueur?.energie_actuelle}
                             maxEnergy={joueur?.energie_max || 10}
                             lastUpdate={joueur?.last_energie_update}
@@ -670,7 +645,7 @@ export default function Home() {
                     result={game.rewardModal} 
                     onClose={() => game.setRewardModal(null)} 
                 />
-            )}           
+            )}            
             {game.showTitresModal && (
                 <div className="fixed inset-0 bg-black/90 z-[200] flex items-center justify-center p-4 animate-fadeIn backdrop-blur-sm">
                     <div className={`w-full max-w-md p-6 rounded-2xl shadow-2xl border relative overflow-hidden ${currentTheme.border} bg-slate-900`}>
