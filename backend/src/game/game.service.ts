@@ -1083,7 +1083,7 @@ async sellItem(dto: SellItemDto) {
 
   
 // =================================================================
-  // ⚔️ DÉMARRAGE DU COMBAT (Optimisé & Sécurisé)
+  // ⚔️ DÉMARRAGE DU COMBAT (PVP FULL HP FIX)
   // =================================================================
   async startFight(dto: StartFightDto, isStory: boolean = false) {
     try {
@@ -1098,8 +1098,20 @@ async sellItem(dto: SellItemDto) {
             });
         }
 
+        // 2. Récupération des données (Attaquant + Défenseur)
+        // On utilise getPlayerData pour l'attaquant
         const attaquant: any = await this.getPlayerData(dto.userId);
-        const defenseur = await this.prisma.joueurs.findUnique({ where: { id: dto.targetId } });
+        
+        // 🔥 MODIFICATION ICI : On charge l'inventaire du défenseur pour calculer ses stats
+        const defenseur = await this.prisma.joueurs.findUnique({ 
+            where: { id: dto.targetId },
+            include: { 
+                inventaire: { 
+                    where: { est_equipe: true }, // On ne charge que le stuff équipé, ça suffit
+                    include: { objets: true } 
+                } 
+            }
+        });
 
         if (!attaquant || !defenseur) throw new BadRequestException("Combattant introuvable.");
         if (attaquant.id === defenseur.id) throw new BadRequestException("Tu ne peux pas te battre contre toi-même.");
@@ -1112,30 +1124,36 @@ async sellItem(dto: SellItemDto) {
              throw new BadRequestException(`Tu es épuisé ! Attends un peu (Energie: ${energieActuelle}/${attaquant.energie_max ?? 10}).`);
         }
 
-        // 4. Vérification PV
+        // 4. Vérification PV Attaquant (Lui doit être en forme)
         const pvAtk = attaquant.pv_actuel ?? 100;
         if (pvAtk <= 0) throw new BadRequestException("Tu es K.O., soigne-toi d'abord !");
 
-        // 5. Calcul des PV du Bot (Scaling)
-        let pvBot = defenseur.pv_actuel ?? 100;
+        // 5. Calcul des PV de l'Adversaire (PVP FAIR-PLAY)
+        let pvAdversaireStart = 100;
+
         if (defenseur.is_bot) {
-        // 👇 PRIORITÉ À LA BDD : Si pv_max_base est défini et > 0, on l'utilise.
-        // Sinon, on utilise la formule automatique.
-        if (defenseur.pv_max_base && defenseur.pv_max_base > 0) {
-            pvBot = defenseur.pv_max_base;
+            // --- LOGIQUE BOT (Scaling) ---
+            if (defenseur.pv_max_base && defenseur.pv_max_base > 0) {
+                pvAdversaireStart = defenseur.pv_max_base;
+            } else {
+                const niveauBot = defenseur.niveau ?? 1;
+                pvAdversaireStart = 100 + (niveauBot * 50); // Formule par défaut
+            }
         } else {
-            const niveauBot = defenseur.niveau ?? 1;
-            pvBot = 100 + (niveauBot * 50); // Fallback
+            // --- LOGIQUE JOUEUR (PVP) ---
+            // 🔥 ON CALCULE SES STATS MAX (Vitalité + Stuff)
+            const statsDefenseur = this.calculatePlayerStats(defenseur);
+            
+            // On démarre le combat avec ses PV MAX, peu importe son état actuel
+            pvAdversaireStart = statsDefenseur.pv_max_total;
         }
-    }
 
         // 6. TRANSACTION ATOMIQUE (Energie + Création Combat)
         const result = await this.prisma.$transaction(async (tx) => {
             
-            // A. Déduction de l'énergie (On capture le résultat dans updatedJoueur)
+            // A. Déduction de l'énergie
             const wasFull = energieActuelle >= (attaquant.energie_max ?? 10);
             
-            // 👇 ON STOCKE LE RÉSULTAT DE L'UPDATE ICI
             const updatedJoueur = await tx.joueurs.update({
                 where: { id: dto.userId },
                 data: { 
@@ -1150,15 +1168,16 @@ async sellItem(dto: SellItemDto) {
                     joueur_id: attaquant.id,
                     adversaire_id: defenseur.id,
                     pv_joueur_actuel: pvAtk,
-                    pv_adversaire_actuel: pvBot,
+                    
+                    // ✅ ICI : On utilise pvAdversaireStart qui est maintenant FULL HP
+                    pv_adversaire_actuel: pvAdversaireStart, 
+                    
                     tour_numero: 1,
                     est_termine: false,
-                    log_combat: [],
-                    // type: defenseur.is_bot ? 'PVE' : 'PVP' (Si vous l'avez remis)
+                    log_combat: []
                 }
             });
 
-            // 👇 ON RETOURNE LES DEUX OBJETS
             return { combat, updatedJoueur };
         });
 
@@ -1169,19 +1188,20 @@ async sellItem(dto: SellItemDto) {
 
         return {
             success: true,
-            combat_id: result.combat.id, // 👈 Attention : result.combat.id
+            combat_id: result.combat.id,
             pv_moi: result.combat.pv_joueur_actuel,
             pv_moi_max: statsAtk.pv_max_total, 
             pv_adv: result.combat.pv_adversaire_actuel,
-            pv_adv_max: pvBot,
-            // 👇 ON RENVOIE LA NOUVELLE ÉNERGIE AU FRONT
+            
+            // On renvoie le max qu'on vient de calculer pour la barre de vie
+            pv_adv_max: pvAdversaireStart, 
+            
             newEnergy: result.updatedJoueur.energie_actuelle, 
             message: `Le combat commence ! (-${COUT_ENERGIE} Énergie)`
         };
 
     } catch (error) {
         console.error("🔥 ERREUR START FIGHT:", error);
-        // On renvoie l'erreur proprement au front
         if (error instanceof BadRequestException) throw error;
         throw new BadRequestException(error.message || "Erreur lancement combat");
     }

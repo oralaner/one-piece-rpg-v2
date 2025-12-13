@@ -135,30 +135,30 @@ async function main() {
 
     {
       faction: "MARINE", numero: 3, titre: "La Marée Noire du Commerce",
-      desc: "Orange Town est tombée sous la coupe de Buggy le Clown. C'est un cirque chaotique où le commerce illégal prospère. La Marine doit rétablir l'ordre et enquêter sur les flux financiers.",
+      desc: "Orange Town est tombée sous la coupe de Baggy le Clown. C'est un cirque chaotique où le commerce illégal prospère. La Marine doit rétablir l'ordre et enquêter sur les flux financiers.",
       recompense_xp: 1000, recompense_berrys: 2000, 
       unlock_island_id: orangeTown?.id, 
       etapes: [
         { ordre: 1, type: "VOYAGE", description: "Naviguez jusqu'au Village d'Orange. L'ambiance y est faussement festive.", target_nom: "Le Village d'Orange" },
-        { ordre: 2, type: "DIALOGUE", description: "Rencontrez l'agent infiltré dans une ruelle. Il murmure : 'Buggy utilise la ville pour blanchir son butin.'", target_nom: "Agent Marine Secret" },
+        { ordre: 2, type: "DIALOGUE", description: "Rencontrez l'agent infiltré dans une ruelle. Il murmure : 'Baggy utilise la ville pour blanchir son butin.'", target_nom: "Agent Marine Secret" },
         { ordre: 3, type: "ACTION", description: "Allez observer l'Hôtel des Ventes. C'est là que les vrais trésors changent de mains.", target_nom: "Inspecter Hôtel des Ventes", quantite: 1 },
         { ordre: 4, type: "ACTION", description: "Infiltrez le Casino. Vous pouvez jouer une partie pour écouter les conversations des pirates ivres.", target_nom: "Aller voir le Casino", quantite: 1 },
         { ordre: 5, type: "ACTION", description: "Si vous avez besoin de vous détendre, prouvez votre force à l'Arène et lancez un duel PVP pour intimider les criminels locaux.", target_nom: "Jeter un coup d'oeil à l'Arène", quantite: 1 },
         { ordre: 6, type: "ACTION", description: "Le moral est bas. Motivez les quelques soldats restés fidèles au poste.", target_nom: "Motiver Marines", quantite: 5 },
-        { ordre: 7, type: "COMBAT_PVE", description: "Un Lieutenant d'élite de Buggy a repéré votre manège ! Arrêtez-le avant qu'il ne prévienne son capitaine.", target_nom: "Pirate de Buggy (Élite)", quantite: 1 },
+        { ordre: 7, type: "COMBAT_PVE", description: "Un Lieutenant d'élite de Baggy a repéré votre manège ! Arrêtez-le avant qu'il ne prévienne son capitaine.", target_nom: "Pirate de Baggy (Élite)", quantite: 1 },
         { ordre: 8, type: "DIALOGUE", description: "Rapport effectué. Vous avez perturbé les finances du Clown. L'agent vous donne votre prochaine cible.", target_nom: "Agent Marine Secret" }
       ]
     },
     {
       faction: "PIRATE", numero: 3, titre: "Voler le Show au Clown",
-      desc: "Orange Town est le territoire de Buggy. C'est dangereux, mais il n'y a pas meilleur endroit pour s'enrichir rapidement et se faire un nom en défiant un capitaine établi.",
+      desc: "Orange Town est le territoire de Baggy. C'est dangereux, mais il n'y a pas meilleur endroit pour s'enrichir rapidement et se faire un nom en défiant un capitaine établi.",
       recompense_xp: 1000, recompense_berrys: 2000, 
       unlock_island_id: orangeTown?.id, 
       etapes: [
-        { ordre: 1, type: "VOYAGE", description: "Mettez le cap sur le Village d'Orange. Évitez les boulets de canon spéciaux de Buggy.", target_nom: "Le Village d'Orange" },
+        { ordre: 1, type: "VOYAGE", description: "Mettez le cap sur le Village d'Orange. Évitez les boulets de canon spéciaux de Baggy.", target_nom: "Le Village d'Orange" },
         { ordre: 2, type: "DIALOGUE", description: "Un contrebandier vous aborde : 'Si tu veux survivre ici, tu dois maîtriser le flux des Berrys.'", target_nom: "Contrebandier" },
         { ordre: 3, type: "ACTION", description: "Allez observer l'Hôtel des Ventes. C'est là que les vrais trésors changent de mains.", target_nom: "Observer Hôtel des Ventes", quantite: 1 },
-        { ordre: 4, type: "ACTION", description: "Vous pouvez tentez votre chance au Casino. Buggy adore les jeux de hasard.", target_nom: "Aller voir le Casino", quantite: 1 },
+        { ordre: 4, type: "ACTION", description: "Vous pouvez tentez votre chance au Casino. Baggy adore les jeux de hasard.", target_nom: "Aller voir le Casino", quantite: 1 },
         { ordre: 5, type: "ACTION", description: "Pour vous faire respecter, vous pouvez vous battre dans l'Arène. Attention, vous vous battrez contre d'autres joueurs aguerris", target_nom: "Jeter un coup d'oeil à l'Arène", quantite: 1 },
         { ordre: 6, type: "ACTION", description: "Un contrebandier vous demande de l'aide pour passer de la marchandise, faites bien attention à ne rien faire tomber", target_nom: "Transporter des caisses", quantite: 5 },
         { ordre: 7, type: "COMBAT_PVE", description: "Mohji le Dompteur et son lion Richie vous barrent la route ! Battez-les pour rester en vie !", target_nom: "Mohji le Dompteur", quantite: 1 },
@@ -167,7 +167,7 @@ async function main() {
     },
     {
       faction: "REVOLUTIONNAIRE", numero: 3, titre: "L'Abolition du Capital",
-      desc: "Buggy le Clown opprime la population d'Orange Town tout en payant tribut pour qu'on le laisse tranquille. Il faut couper ses vivres et soulever le peuple contre cette tyrannie bouffonne.",
+      desc: "Baggy le Clown opprime la population d'Orange Town tout en payant tribut pour qu'on le laisse tranquille. Il faut couper ses vivres et soulever le peuple contre cette tyrannie bouffonne.",
       recompense_xp: 1000, recompense_berrys: 2000, 
       unlock_island_id: orangeTown?.id, 
       etapes: [
