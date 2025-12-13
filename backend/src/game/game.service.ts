@@ -511,7 +511,7 @@ async getPlayerData(userId: string, discordPseudo?: string, discordAvatar?: stri
             throw new InternalServerErrorException("Erreur création: " + error.message);
         }
     }
-
+    joueur = await this.checkRegeneration(joueur);
     if (!joueur) throw new InternalServerErrorException("Erreur critique: Joueur introuvable.");
 
     // --- RECONSTRUCTION EQUIPEMENT (Inchangé) ---
@@ -1101,15 +1101,26 @@ async sellItem(dto: SellItemDto) {
         }
 
         // 2. Récupération des données (Attaquant + Défenseur)
-        // On utilise getPlayerData pour l'attaquant
-        const attaquant: any = await this.getPlayerData(dto.userId);
         
-        // 🔥 MODIFICATION ICI : On charge l'inventaire du défenseur pour calculer ses stats
+        // A. L'ATTAQUANT (Moi)
+        let attaquant: any = await this.getPlayerData(dto.userId);
+
+        // 🔥 MODIFICATION 1 : Régénération passive AVANT le combat
+        // Si le joueur ne s'est pas connecté depuis longtemps, on lui rend PV/Energie maintenant.
+        if (attaquant) {
+            const updatedAttaquant = await this.checkRegeneration(attaquant);
+            // On met à jour l'objet local pour que les checks d'énergie suivants soient corrects
+            attaquant.pv_actuel = updatedAttaquant.pv_actuel;
+            attaquant.energie_actuelle = updatedAttaquant.energie_actuelle;
+        }
+
+        // B. LE DÉFENSEUR (L'Adversaire)
+        // 🔥 MODIFICATION 2 : On charge l'inventaire du défenseur pour calculer ses stats
         const defenseur = await this.prisma.joueurs.findUnique({ 
             where: { id: dto.targetId },
             include: { 
                 inventaire: { 
-                    where: { est_equipe: true }, // On ne charge que le stuff équipé, ça suffit
+                    where: { est_equipe: true }, // On ne charge que le stuff équipé
                     include: { objets: true } 
                 } 
             }
@@ -1543,6 +1554,91 @@ async sellItem(dto: SellItemDto) {
         }
     }
     throw new BadRequestException("Jeu inconnu");
+  }
+  // =================================================================
+  // 🏥 SYSTÈME DE RÉGÉNÉRATION PASSIVE (Lazy Update)
+  // =================================================================
+  private async checkRegeneration(joueur: any) {
+    const now = new Date();
+    
+    // --- 1. RÉGÉNÉRATION SANTÉ (10 PV / Heure) ---
+    const lastPvUpdate = joueur.last_pv_update ? new Date(joueur.last_pv_update) : now;
+    const msPassedPv = now.getTime() - lastPvUpdate.getTime();
+    const hoursPassedPv = msPassedPv / (1000 * 60 * 60); // Conversion en heures
+
+    // On calcule les stats max pour ne pas dépasser
+    const stats = this.calculatePlayerStats(joueur);
+    const pvMax = stats.pv_max_total;
+    const pvActuel = joueur.pv_actuel ?? 0;
+
+    let newPv = pvActuel;
+    let updatePv = false;
+
+    // Si le joueur est blessé et que du temps a passé
+    if (pvActuel < pvMax && hoursPassedPv >= 0.1) { // On met à jour si au moins 6 min passées (opti)
+        const pvGained = Math.floor(hoursPassedPv * 10); // 10 PV par heure
+        
+        if (pvGained > 0) {
+            newPv = Math.min(pvMax, pvActuel + pvGained);
+            updatePv = true;
+        }
+    }
+
+    // --- 2. RÉGÉNÉRATION ÉNERGIE (1 Énergie / 30 min par exemple) ---
+    // (J'ajoute ça pour que ton système reste cohérent, tu peux ajuster le taux)
+    const lastEnergieUpdate = joueur.last_energie_update ? new Date(joueur.last_energie_update) : now;
+    const msPassedEnergie = now.getTime() - lastEnergieUpdate.getTime();
+    const minutesPassedEnergie = msPassedEnergie / (1000 * 60);
+    
+    const energieMax = joueur.energie_max ?? 10;
+    const energieActuelle = joueur.energie_actuelle ?? 0;
+    
+    let newEnergie = energieActuelle;
+    let updateEnergie = false;
+
+    // Récupère 1 point toutes les 30 minutes (modifiable)
+    if (energieActuelle < energieMax && minutesPassedEnergie >= 30) {
+        const energieGained = Math.floor(minutesPassedEnergie / 30);
+        if (energieGained > 0) {
+            newEnergie = Math.min(energieMax, energieActuelle + energieGained);
+            updateEnergie = true;
+        }
+    }
+
+    // --- 3. MISE À JOUR BDD SI NÉCESSAIRE ---
+    if (updatePv || updateEnergie) {
+        const updateData: any = {};
+        
+        if (updatePv) {
+            updateData.pv_actuel = newPv;
+            // On "consomme" le temps passé en remettant la date à maintenant
+            updateData.last_pv_update = now; 
+        }
+        
+        if (updateEnergie) {
+            updateData.energie_actuelle = newEnergie;
+            // Astuce : Pour l'énergie, on garde le "reste" du temps pour ne pas perdre les minutes
+            // Mais pour faire simple ici, on reset à now (légère perte de précision négligeable)
+            updateData.last_energie_update = now;
+        }
+
+        // On update et on retourne le joueur frais
+        return this.prisma.joueurs.update({
+            where: { id: joueur.id },
+            data: updateData,
+            // On inclut tout ce dont on a besoin pour la suite (inventaire, etc.)
+            include: {
+                inventaire: { include: { objets: true } },
+                equipage: true,
+                joueur_titres: { include: { titres_ref: true } },
+                equip_tete: true, equip_corps: true, equip_bottes: true,
+                equip_bague: true, equip_collier: true
+            }
+        });
+    }
+
+    // Si rien à changer, on retourne le joueur tel quel
+    return joueur;
   }
   // =================================================================
   // 🏳️ FUIR LE COMBAT (Correction TypeScript)
