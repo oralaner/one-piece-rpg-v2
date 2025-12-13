@@ -1,38 +1,39 @@
 import React, { useState } from 'react';
 import { api } from '../utils/api';
-import { useQueryClient } from '@tanstack/react-query'; // 👈 Import nécessaire
+import { useQueryClient } from '@tanstack/react-query'; // Import nécessaire
 
 const FactionSelector = ({ onSelect, userId }) => {
     const [loading, setLoading] = useState(false);
-    const queryClient = useQueryClient(); // 👈 Initialisation
+    const queryClient = useQueryClient(); // On récupère le client React Query
 
     const handleChoose = async (faction) => {
         if (loading) return;
         setLoading(true);
         try {
-            console.log("Envoi choix faction:", faction);
+            console.log("1. Envoi choix faction:", faction);
             
-            // 1. Appel API
+            // Appel API
             await api.post('/game/faction/choose', { userId, faction });
             
-            console.log("Succès API. Mise à jour force du cache...");
+            console.log("2. Succès API. Rafraîchissement des données...");
 
-            // 2. ⚡ FORCE UPDATE DU CACHE LOCAL (Le secret est ici)
-            // On dit à React : "Ne cherche pas, voici les nouvelles données !"
-            queryClient.setQueryData(['playerData', userId], (oldData) => {
-                if (!oldData) return oldData;
-                return {
-                    ...oldData,
-                    faction: faction, // On injecte la faction choisie
-                    titre_actuel: null // On s'assure que le reste est propre
-                };
-            });
+            // ⚡ CLÉ DU FIX : On invalide le cache 'playerData'.
+            // React Query va automatiquement refaire un GET /player/me en arrière-plan.
+            await queryClient.invalidateQueries(['playerData']);
+            
+            // On force aussi une mise à jour optimiste pour l'interface immédiate
+            queryClient.setQueryData(['playerData', userId], (old) => ({
+                ...old,
+                faction: faction
+            }));
 
-            // 3. On déclenche la suite
+            console.log("3. Données à jour. Fermeture du sélecteur.");
+
+            // On prévient le parent que c'est fini
             if (onSelect) onSelect(); 
             
-            // Pas de window.location.reload() tout de suite, on laisse React réagir
-            // Le composant parent va voir que 'joueur.faction' existe et va changer d'écran tout seul.
+            // ❌ ON NE RELOAD PLUS LA PAGE ! 
+            // window.location.reload(); 
 
         } catch (e) {
             console.error(e);

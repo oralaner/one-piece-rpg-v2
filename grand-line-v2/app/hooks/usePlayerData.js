@@ -7,30 +7,21 @@ export const usePlayerData = (userId) => {
         queryKey: ['playerData', userId],
         
         queryFn: async () => {
+            console.log("🔄 Fetching player data for:", userId);
             try {
-                // ⚡ ASTUCE ANTI-CACHE : On ajoute un timestamp inutile dans l'URL
-                // Cela force le navigateur à ne jamais utiliser son cache disque
-                const timestamp = new Date().getTime();
-                const res = await api.get(`/game/player/me?t=${timestamp}`);
-                
-                // Petit log pour vérifier ce qu'on reçoit
-                if (res.data) {
-                    console.log("📥 Données reçues:", res.data.pseudo, "| Faction:", res.data.faction);
-                }
-                
+                const res = await api.get('/game/player/me');
+                console.log("✅ Data received:", res.data?.pseudo);
                 return res.data;
             } catch (err) {
+                console.error("❌ Error fetching player:", err.response?.status);
                 throw err;
             }
         },
         
         enabled: !!userId,
-        
-        // 👇 CONFIGURATION ZÉRO CACHE
-        staleTime: 0, // Les données sont considérées comme périmées instantanément
-        cacheTime: 0, // On ne garde rien en mémoire cache inutilement
-        refetchOnWindowFocus: true, // On recharge dès qu'on revient sur la fenêtre
-        refetchOnMount: true // On recharge dès que le composant s'affiche
+        retry: 1, // On essaie 1 fois en cas d'échec réseau, mais pas en boucle
+        staleTime: 0, // Toujours frais
+        refetchOnWindowFocus: true
     });
 
     return { 
