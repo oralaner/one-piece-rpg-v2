@@ -1,39 +1,56 @@
 import React, { useState } from 'react';
 import { api } from '../utils/api';
-import { useQueryClient } from '@tanstack/react-query'; // Import nécessaire
+import { useQueryClient } from '@tanstack/react-query';
 
 const FactionSelector = ({ onSelect, userId }) => {
     const [loading, setLoading] = useState(false);
-    const queryClient = useQueryClient(); // On récupère le client React Query
+    const queryClient = useQueryClient();
 
     const handleChoose = async (faction) => {
         if (loading) return;
         setLoading(true);
+        
         try {
             console.log("1. Envoi choix faction:", faction);
             
-            // Appel API
+            // 1. Appel API pour sauvegarder en BDD
             await api.post('/game/faction/choose', { userId, faction });
             
-            console.log("2. Succès API. Rafraîchissement des données...");
+            console.log("2. Succès API. Injection immédiate du joueur...");
 
-            // ⚡ CLÉ DU FIX : On invalide le cache 'playerData'.
-            // React Query va automatiquement refaire un GET /player/me en arrière-plan.
+            // ⚡⚡⚡ LA SOLUTION ULTIME ⚡⚡⚡
+            // On injecte manuellement un "Faux Joueur" complet dans le cache.
+            // Comme ça, Home.js voit un joueur IMMÉDIATEMENT et affiche le jeu.
+            // React Query remplacera ça par les vraies données du serveur 1 seconde plus tard.
+            
+            queryClient.setQueryData(['playerData', userId], (old) => {
+                return {
+                    id: userId,
+                    pseudo: "Pirate", // Sera remplacé par le vrai fetch
+                    faction: faction, // ✅ Ce qui compte c'est ça !
+                    
+                    // On met des valeurs par défaut pour éviter que Home.js ne plante
+                    niveau: 1,
+                    xp: 0,
+                    berrys: 100,
+                    pv_actuel: 100,
+                    pv_max_base: 100,
+                    energie_actuelle: 10,
+                    inventaire: [],
+                    equipement: { arme: null, tete: null, corps: null, bottes: null },
+                    statsTotales: { force: 1, vitalite: 1, pv_max_total: 100 },
+                    
+                    // On garde les vieilles données si elles existent (peu probable ici)
+                    ...(old || {})
+                };
+            });
+
+            // On invalide pour être sûr de récupérer les vraies données après
             await queryClient.invalidateQueries(['playerData']);
-            
-            // On force aussi une mise à jour optimiste pour l'interface immédiate
-            queryClient.setQueryData(['playerData', userId], (old) => ({
-                ...old,
-                faction: faction
-            }));
 
-            console.log("3. Données à jour. Fermeture du sélecteur.");
+            console.log("3. Cache mis à jour. Passage au jeu !");
 
-            // On prévient le parent que c'est fini
             if (onSelect) onSelect(); 
-            
-            // ❌ ON NE RELOAD PLUS LA PAGE ! 
-            // window.location.reload(); 
 
         } catch (e) {
             console.error(e);
