@@ -7,29 +7,29 @@ export const usePlayerData = (userId) => {
         queryKey: ['playerData', userId],
         
         queryFn: async () => {
-            // Timestamp anti-cache
             const t = new Date().getTime();
             console.log(`📡 Appel API /player/me (t=${t})...`);
             
+            // On récupère la réponse brute d'axios/api
             const res = await api.get(`/game/player/me?t=${t}`);
             
-            // 👇 LOG COMPLET DE LA RÉPONSE
-            console.log("📦 Réponse BRUTE API:", res); 
+            // 👇 CORRECTION : On vérifie où sont les données
+            // Si res contient directement l'ID, c'est que c'est le joueur
+            // Sinon, c'est peut-être dans res.data
+            const playerData = res.id ? res : res.data;
 
-            // Sécurité : parfois axios met les données dans res.data, parfois res.data.data
-            const playerData = res.data;
-
-            if (!playerData) {
-                console.error("❌ ERREUR: Données vides reçues du backend !");
+            console.log("✅ Données extraites:", playerData);
+            
+            if (!playerData || !playerData.id) {
+                console.error("❌ ERREUR: Données invalides reçues !");
                 return null;
             }
 
-            console.log("✅ Données extraites:", playerData);
             return playerData;
         },
         
         enabled: !!userId,
-        retry: false, // On ne réessaie pas pour éviter les boucles en dev
+        retry: false, 
         staleTime: 0,
         refetchOnWindowFocus: true
     });
