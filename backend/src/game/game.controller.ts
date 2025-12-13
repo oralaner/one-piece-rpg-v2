@@ -49,8 +49,23 @@ export class GameController {
 
   @UseGuards(AuthGuard('jwt'))
   @Get('player/me')
-  async getMyProfile(@User() userId: string) {
-    return this.gameService.getPlayerData(userId);
+  async getMyProfile(
+    @User() userId: string,
+    @User('pseudo') discordPseudo: string, // ✨ Récupère le pseudo Discord
+    @User('avatarUrl') discordAvatar: string // ✨ Récupère l'avatar Discord
+  ) {
+    if (!userId) {
+        console.error("❌ [CONTROLLER] ERREUR : L'ID est undefined ou null !");
+    }
+
+    // On passe les infos au service pour la création auto
+    const result = await this.gameService.getPlayerData(userId, discordPseudo, discordAvatar);
+    
+    if (!result) {
+        console.error("⚠️ [CONTROLLER] Service a renvoyé null/undefined");
+    }
+
+    return result;
   }
   
   @Post('activity')
