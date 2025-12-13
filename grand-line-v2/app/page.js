@@ -146,18 +146,17 @@ export default function Home() {
     // On affiche l'écran de création
     if (isNewPlayer) {
         return (
-            <FactionSelector 
-                userId={game.session.user.id} 
-                onSelect={() => {
-                    // Une fois créé, on invalide le cache pour recharger les données (qui ne seront plus 404)
-                    queryClient.invalidateQueries(['playerData']);
-                    // On peut aussi forcer un reload au cas où
-                    setTimeout(() => window.location.reload(), 500);
-                }} 
-            />
+            <div className="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
+                <FactionSelector 
+                    userId={game.session.user.id} 
+                    onSelect={() => {
+                        window.location.reload(); // On reload pour être sûr de repartir propre
+                    }} 
+                />
+            </div>
         );
     }
-
+    if (!joueur) return <div className="flex h-screen items-center justify-center text-cyan-400 font-black animate-pulse">Chargement...</div>;
     // CAS 2 : JOUEUR CHARGÉ MAIS DONNÉES INCOMPLÈTES (Backup)
     if (joueur && !joueur.faction) {
             return (
