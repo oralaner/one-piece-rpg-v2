@@ -218,7 +218,6 @@ const MapTab = ({ destinations, joueur, expeditionChrono, onTravel, onCollect, t
 
                     {/* LIGNE 3 : BOUTONS D'ACTION */}
                     <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-white/10">
-                        <button onClick={() => setSelectedDest(null)} className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-600 hover:bg-slate-800 text-slate-400 transition">✕</button>
                         <button 
                             onClick={() => onTravel(selectedDest)} 
                             disabled={joueur.niveau < selectedDest.niveau_requis} 
@@ -226,6 +225,8 @@ const MapTab = ({ destinations, joueur, expeditionChrono, onTravel, onCollect, t
                         >
                             {joueur.niveau >= selectedDest.niveau_requis ? 'LANCER L\'EXPÉDITION' : 'NIVEAU INSUFFISANT'}
                         </button>
+                                                <button onClick={() => setSelectedDest(null)} className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-600 hover:bg-slate-800 text-slate-400 transition">✕</button>
+
                     </div>
                 </div>
             )}
