@@ -9,14 +9,6 @@ datasource db {
   schemas  = ["public"]
 }
 
-// -------------------------------------------------------------
-// PARTIE AUTH (Supabase) - NE PAS TOUCHER
-// -------------------------------------------------------------
-
-// -------------------------------------------------------------
-// PARTIE JEU (PUBLIC)
-// -------------------------------------------------------------
-
 model banque_logs {
   id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   equipage_id   String?    @db.Uuid
@@ -80,28 +72,20 @@ model demandes_adhesion {
 }
 
 model destinations {
-  id              Int      @id @default(autoincrement())
-  nom             String   @unique
+  id              Int       @id @default(autoincrement())
+  nom             String    @unique
   description     String?
   image_url       String?
-
-  // Position
-  pos_x           Int?     @default(50)
-  pos_y           Int?     @default(50)
-  region          String?  @default("East Blue")
-  type_lieu       String?  @default("ILE")
-
-  // Gameplay
-  duree_minutes   Int      @default(5)
-  niveau_requis   Int?     @default(1)
-  difficulte      Int      @default(10) // 👈 Ce champ manquait peut-être
-
-  // Récompenses
-  xp_gain         Int      @default(10) // 👈 Celui-ci aussi
-  gain_estime     Int?     @default(100) // (Equivalent de berrys_gain)
-
-  loots_possibles Json     @default("[]") // 👈 Et celui-ci
-
+  pos_x           Int?      @default(50)
+  pos_y           Int?      @default(50)
+  region          String?   @default("East Blue")
+  type_lieu       String?   @default("ILE")
+  duree_minutes   Int       @default(5)
+  niveau_requis   Int?      @default(1)
+  difficulte      Int       @default(10)
+  xp_gain         Int       @default(10)
+  gain_estime     Int?      @default(100)
+  loots_possibles Json      @default("[]")
   joueurs         joueurs[]
 
   @@schema("public")
@@ -116,7 +100,6 @@ model equipages {
   date_creation                      DateTime?           @default(now()) @db.Timestamptz(6)
   niveau                             Int?                @default(1)
   xp                                 BigInt?             @default(0)
-  membres                            joueurs[]
   berrys_banque                      BigInt?             @default(0)
   expedition_etat                    String?             @default("AUCUNE")
   expedition_cible_id                Int?
@@ -126,21 +109,20 @@ model equipages {
   banque_logs                        banque_logs[]
   demandes_adhesion                  demandes_adhesion[]
   joueurs_equipages_chef_idTojoueurs joueurs?            @relation("equipages_chef_idTojoueurs", fields: [chef_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  membres                            joueurs[]
 
   @@schema("public")
 }
 
 model inventaire {
-  id                                    Int     @id @default(autoincrement())
-  joueur_id                             String  @db.Uuid
-  objet_id                              Int
-  quantite                              Int?    @default(1)
-  stats_perso                           Json?
-  est_equipe                            Boolean @default(false)
-  joueurs_inventaire_joueur_idTojoueurs joueurs @relation("inventaire_joueur_idTojoueurs", fields: [joueur_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  objets                                objets  @relation(fields: [objet_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  // Relations inverses nécessaires pour Prisma (ne pas renommer ici, c'est auto-géré via les noms de relations)
+  id                                           Int       @id @default(autoincrement())
+  joueur_id                                    String    @db.Uuid
+  objet_id                                     Int
+  quantite                                     Int?      @default(1)
+  stats_perso                                  Json?
+  est_equipe                                   Boolean   @default(false)
+  joueurs_inventaire_joueur_idTojoueurs        joueurs   @relation("inventaire_joueur_idTojoueurs", fields: [joueur_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  objets                                       objets    @relation(fields: [objet_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   joueurs_joueurs_equip_arme_idToinventaire    joueurs[] @relation("joueurs_equip_arme_idToinventaire")
   joueurs_joueurs_equip_bague_idToinventaire   joueurs[] @relation("joueurs_equip_bague_idToinventaire")
   joueurs_joueurs_equip_bottes_idToinventaire  joueurs[] @relation("joueurs_equip_bottes_idToinventaire")
@@ -177,7 +159,6 @@ model joueur_quetes {
   quetes_ref       quetes_ref? @relation(fields: [quete_ref_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("public")
-  
 }
 
 model joueur_titres {
@@ -192,108 +173,99 @@ model joueur_titres {
   @@schema("public")
 }
 
-// -------------------------------------------------------------
-// LE MODÈLE JOUEUR CORRIGÉ
-// -------------------------------------------------------------
-
 model joueurs {
-  id                      String    @id @db.Uuid
-  pseudo                  String?
-  avatar_url              String?
-  niveau                  Int?      @default(1)
-  xp                      Int?      @default(0)
-  berrys                  Int?      @default(100)
-  faction                 String?   @default("Pirate")
-  derniere_activite       DateTime? @default(now()) @db.Timestamptz(6)
-  expedition_fin          DateTime? @db.Timestamptz(6)
-  expedition_dest_id      Int?
-  force                   Int?      @default(10)
-  defense                 Int?      @default(5)
-  pv_max                  Int?      @default(100)
-  victoires               Int?      @default(0)
-  defaites                Int?      @default(0)
-  vitalite                Int?      @default(1)
-  sagesse                 Int?      @default(1)
-  intelligence            Int?      @default(1)
-  agilite                 Int?      @default(1)
-  chance                  Int?      @default(1)
-  points_carac            Int?      @default(5)
-  pv_actuel               Int?      @default(105)
-  pv_max_base             Int?      @default(100)
-  last_pv_update          DateTime? // Pour la régénération passive
-  combats_journaliers     Int?      @default(0)
-  energie_actuelle        Int       @default(10) // L'énergie actuelle du joueur (max 10)
-  last_energie_update     DateTime  @default(now()) // Timestamp de la dernière régénération/consommation
-  dernier_reset_combats   DateTime? @default(now()) @db.Timestamptz(6)
-  casino_streak           Int?      @default(0)
-  derniere_fouille        DateTime? @default(dbgenerated("(now() - '01:00:00'::interval)")) @db.Timestamptz(6)
-  deck_combat             Int[]     @default([])
-  is_bot                  Boolean?  @default(false)
-  victoires_pve           Int?      @default(0)
-  defaites_pve            Int?      @default(0)
-  victoires_pvp           Int?      @default(0)
-  defaites_pvp            Int?      @default(0)
-  elo_pvp                 Int?      @default(0)
-  fruit_demon             String?
-  equipage_id             String?   @db.Uuid
-  part_xp_equipage        Int?      @default(10)
-  equipage_demande_id     String?   @db.Uuid
-  xp_donnee_equipage      BigInt?   @default(0)
-  prime                   BigInt?   @default(0)
-  haki_observation        Boolean?  @default(false)
-  haki_armement           Boolean?  @default(false)
-  haki_rois               Boolean?  @default(false)
-  niveau_navire           Int?      @default(1)
-  nom_navire              String?   @default("Radeau de Fortune")
-  titre_actuel            String?
-  nb_expeditions_reussies Int?      @default(0)
-  nb_crafts               Int?      @default(0)
-  nb_coffres_ouverts      Int?      @default(0)
-  nb_potions_bues         Int?      @default(0)
-  nb_activites            Int?      @default(0)
-  berrys_depenses_shop    BigInt?   @default(0)
-  berrys_mises_casino     BigInt?   @default(0)
-  a_tout_perdu_casino     Boolean?  @default(false)
-  equip_arme_id           Int?
-  equip_tete_id           Int?
-  equip_corps_id          Int?
-  equip_bottes_id         Int?
-  equip_bague_id          Int?
-  equip_collier_id        Int?
-  equip_navire_id         Int?
-  last_play_des           DateTime? @db.Timestamptz(6)
-  last_play_pfc           DateTime? @db.Timestamptz(6)
-  last_play_quitte        DateTime? @db.Timestamptz(6)
-  chapitre_actuel         Int       @default(1) 
-  etape_actuelle          Int       @default(1) // On commence à l'étape 1 du chapitre 1
-  quetes_journalieres quetes_journalieres[]
-  localisation_id         Int?      @default(1) // ID de l'île où se trouve le joueur
-
-  // Relations
+  id                                   String                @id @db.Uuid
+  pseudo                               String?
+  avatar_url                           String?
+  niveau                               Int?                  @default(1)
+  xp                                   Int?                  @default(0)
+  berrys                               Int?                  @default(100)
+  faction                              String?               @default("Pirate")
+  derniere_activite                    DateTime?             @default(now()) @db.Timestamptz(6)
+  expedition_fin                       DateTime?             @db.Timestamptz(6)
+  expedition_dest_id                   Int?
+  force                                Int?                  @default(10)
+  defense                              Int?                  @default(5)
+  pv_max                               Int?                  @default(100)
+  victoires                            Int?                  @default(0)
+  defaites                             Int?                  @default(0)
+  vitalite                             Int?                  @default(1)
+  sagesse                              Int?                  @default(1)
+  intelligence                         Int?                  @default(1)
+  agilite                              Int?                  @default(1)
+  chance                               Int?                  @default(1)
+  points_carac                         Int?                  @default(5)
+  pv_actuel                            Int?                  @default(105)
+  pv_max_base                          Int?                  @default(100)
+  last_pv_update                       DateTime?
+  combats_journaliers                  Int?                  @default(0)
+  energie_actuelle                     Int                   @default(10)
+  last_energie_update                  DateTime              @default(now())
+  dernier_reset_combats                DateTime?             @default(now()) @db.Timestamptz(6)
+  casino_streak                        Int?                  @default(0)
+  derniere_fouille                     DateTime?             @default(dbgenerated("(now() - '01:00:00'::interval)")) @db.Timestamptz(6)
+  deck_combat                          Int[]                 @default([])
+  is_bot                               Boolean?              @default(false)
+  victoires_pve                        Int?                  @default(0)
+  defaites_pve                         Int?                  @default(0)
+  victoires_pvp                        Int?                  @default(0)
+  defaites_pvp                         Int?                  @default(0)
+  elo_pvp                              Int?                  @default(0)
+  fruit_demon                          String?
+  equipage_id                          String?               @db.Uuid
+  part_xp_equipage                     Int?                  @default(10)
+  equipage_demande_id                  String?               @db.Uuid
+  xp_donnee_equipage                   BigInt?               @default(0)
+  prime                                BigInt?               @default(0)
+  haki_observation                     Boolean?              @default(false)
+  haki_armement                        Boolean?              @default(false)
+  haki_rois                            Boolean?              @default(false)
+  niveau_navire                        Int?                  @default(1)
+  nom_navire                           String?               @default("Radeau de Fortune")
+  titre_actuel                         String?
+  nb_expeditions_reussies              Int?                  @default(0)
+  nb_crafts                            Int?                  @default(0)
+  nb_coffres_ouverts                   Int?                  @default(0)
+  nb_potions_bues                      Int?                  @default(0)
+  nb_activites                         Int?                  @default(0)
+  berrys_depenses_shop                 BigInt?               @default(0)
+  berrys_mises_casino                  BigInt?               @default(0)
+  a_tout_perdu_casino                  Boolean?              @default(false)
+  equip_arme_id                        Int?
+  equip_tete_id                        Int?
+  equip_corps_id                       Int?
+  equip_bottes_id                      Int?
+  equip_bague_id                       Int?
+  equip_collier_id                     Int?
+  equip_navire_id                      Int?
+  last_play_des                        DateTime?             @db.Timestamptz(6)
+  last_play_pfc                        DateTime?             @db.Timestamptz(6)
+  last_play_quitte                     DateTime?             @db.Timestamptz(6)
+  chapitre_actuel                      Int                   @default(1)
+  etape_actuelle                       Int                   @default(1)
+  localisation_id                      Int?                  @default(1)
   demandes_adhesion                    demandes_adhesion[]
-  equipage                             equipages?           @relation(fields: [equipage_id], references: [id])
-  equipages_equipages_chef_idTojoueurs equipages[]          @relation("equipages_chef_idTojoueurs")
+  equipages_equipages_chef_idTojoueurs equipages[]           @relation("equipages_chef_idTojoueurs")
+  inventaire                           inventaire[]          @relation("inventaire_joueur_idTojoueurs")
   joueur_competences                   joueur_competences[]
   joueur_quetes                        joueur_quetes[]
   joueur_titres                        joueur_titres[]
-  destinations                         destinations?        @relation(fields: [expedition_dest_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  equip_arme                           inventaire?           @relation("joueurs_equip_arme_idToinventaire", fields: [equip_arme_id], references: [id], onUpdate: NoAction)
+  equip_bague                          inventaire?           @relation("joueurs_equip_bague_idToinventaire", fields: [equip_bague_id], references: [id], onUpdate: NoAction)
+  equip_bottes                         inventaire?           @relation("joueurs_equip_bottes_idToinventaire", fields: [equip_bottes_id], references: [id], onUpdate: NoAction)
+  equip_collier                        inventaire?           @relation("joueurs_equip_collier_idToinventaire", fields: [equip_collier_id], references: [id], onUpdate: NoAction)
+  equip_corps                          inventaire?           @relation("joueurs_equip_corps_idToinventaire", fields: [equip_corps_id], references: [id], onUpdate: NoAction)
+  equip_navire                         inventaire?           @relation("joueurs_equip_navire_idToinventaire", fields: [equip_navire_id], references: [id], onUpdate: NoAction)
+  equip_tete                           inventaire?           @relation("joueurs_equip_tete_idToinventaire", fields: [equip_tete_id], references: [id], onUpdate: NoAction)
+  equipage                             equipages?            @relation(fields: [equipage_id], references: [id])
+  destinations                         destinations?         @relation(fields: [expedition_dest_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   marche                               marche[]
   messages                             messages[]
-
-  // ✅ CORRECTION ICI : NOMS COURTS ET PROPRES (correspondent à ton game.service.ts)
-  inventaire inventaire[] @relation("inventaire_joueur_idTojoueurs")
-
-  equip_arme    inventaire? @relation("joueurs_equip_arme_idToinventaire", fields: [equip_arme_id], references: [id], onUpdate: NoAction)
-  equip_tete    inventaire? @relation("joueurs_equip_tete_idToinventaire", fields: [equip_tete_id], references: [id], onUpdate: NoAction)
-  equip_corps   inventaire? @relation("joueurs_equip_corps_idToinventaire", fields: [equip_corps_id], references: [id], onUpdate: NoAction)
-  equip_bottes  inventaire? @relation("joueurs_equip_bottes_idToinventaire", fields: [equip_bottes_id], references: [id], onUpdate: NoAction)
-  equip_bague   inventaire? @relation("joueurs_equip_bague_idToinventaire", fields: [equip_bague_id], references: [id], onUpdate: NoAction)
-  equip_collier inventaire? @relation("joueurs_equip_collier_idToinventaire", fields: [equip_collier_id], references: [id], onUpdate: NoAction)
-  equip_navire  inventaire? @relation("joueurs_equip_navire_idToinventaire", fields: [equip_navire_id], references: [id], onUpdate: NoAction)
+  quetes_journalieres                  quetes_journalieres[]
 
   @@index([equipage_id])
-  @@index([niveau(sort: Desc)]) // Pour le classement
-  @@index([elo_pvp(sort: Desc)]) // Pour le classement PvP
+  @@index([niveau(sort: Desc)])
+  @@index([elo_pvp(sort: Desc)])
   @@schema("public")
 }
 
@@ -308,8 +280,8 @@ model marche {
   objets        objets?   @relation(fields: [objet_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   joueurs       joueurs?  @relation(fields: [vendeur_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@index([created_at(sort: Desc)]) // Pour afficher les derniers ajouts
-  @@index([prix_unitaire]) // Pour trier par prix
+  @@index([created_at(sort: Desc)])
+  @@index([prix_unitaire])
   @@schema("public")
 }
 
@@ -335,70 +307,50 @@ model meteo {
 }
 
 model navires_ref {
-  niveau       Int    @id // 1, 2, 3...
-  nom          String
-  image_url    String?
-  description  String?
-  
-  // Coût en Berrys pour atteindre ce niveau
-  prix_berrys  BigInt @default(0) 
-
-  // Relations
-  cout_items   navire_upgrade_couts[]
+  niveau      Int                    @id
+  nom         String
+  image_url   String?
+  description String?
+  prix_berrys BigInt                 @default(0)
+  cout_items  navire_upgrade_couts[]
 
   @@schema("public")
 }
 
 model navire_upgrade_couts {
-  id             Int         @id @default(autoincrement())
-  navire_niveau  Int
-  objet_id       Int
-  quantite       Int
-
-  // Relations
-  navire         navires_ref @relation(fields: [navire_niveau], references: [niveau], onDelete: Cascade)
-  objet          objets      @relation(fields: [objet_id], references: [id])
+  id            Int         @id @default(autoincrement())
+  navire_niveau Int
+  objet_id      Int
+  quantite      Int
+  navire        navires_ref @relation(fields: [navire_niveau], references: [niveau], onDelete: Cascade)
+  objet         objets      @relation(fields: [objet_id], references: [id])
 
   @@schema("public")
 }
 
-
 model objets {
-  id          Int     @id @default(autoincrement())
-  nom         String  @unique
-  rarete      String
-  description String?
-  image_url   String?
-
-  // Prix
-  prix_achat Int? @default(0)
-  prix_vente Int? @default(0)
-
-  // Booléens
-  en_boutique   Boolean? @default(false) // Correspond à "est_achetable"
-  est_unique    Boolean? @default(false)
-  est_craftable Boolean? @default(false) // 👈 AJOUTÉ (manquait)
-  est_lootable  Boolean? @default(true) // 👈 AJOUTÉ (pour filtrer les loots)
-
-  // Types
-  categorie       String? // 👈 AJOUTÉ (Ressource, Consommable, Coffre...)
-  type_equipement String? // TETE, CORPS (uniquement si c'est un équipement)
+  id              Int                    @id @default(autoincrement())
+  nom             String                 @unique
+  rarete          String
+  description     String?
+  image_url       String?
+  prix_achat      Int?                   @default(0)
+  prix_vente      Int?                   @default(0)
+  en_boutique     Boolean?               @default(false)
+  est_unique      Boolean?               @default(false)
+  est_craftable   Boolean?               @default(false)
+  est_lootable    Boolean?               @default(true)
+  categorie       String?
+  type_equipement String?
   nom_set         String?
-
-  // Stats & Données
-  stats_bonus Json? @default("{}") // On va stocker Force, Défense etc. ici
-  soin        Int?  @default(0) // 👈 AJOUTÉ (pour les potions/nourriture)
-
-  stock Int?
-
-  // Relations existantes (ne pas toucher)
-  inventaire inventaire[]
-  marche     marche[]
-  recettes   recettes[]
-
+  stats_bonus     Json?                  @default("{}")
+  soin            Int?                   @default(0)
+  stock           Int?
+  inventaire      inventaire[]
+  marche          marche[]
   navire_couts    navire_upgrade_couts[]
-
-  utilise_dans recette_ingredients[]
+  utilise_dans    recette_ingredients[]
+  recettes        recettes[]
 
   @@schema("public")
 }
@@ -417,21 +369,15 @@ model quetes_ref {
 }
 
 model recettes {
-  id                Int    @id @default(autoincrement())
+  id                Int                   @id @default(autoincrement())
   nom               String
   objet_resultat_id Int?
-
-  // Supprimez "ingredients Json", on utilise la table de liaison maintenant !
-  categorie   String? @default("Autre")
-  temps_craft Int     @default(10)
-  xp_craft    Int     @default(10)
-
-  // Relations
-  objet_resultat objets? @relation(fields: [objet_resultat_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  // 👇 C'EST CETTE LIGNE QUI MANQUAIT (Lien inverse)
-  ingredients recette_ingredients[]
-  niveau_requis       Int      @default(1)       // Pour bloquer le craft si bas niveau
+  categorie         String?               @default("Autre")
+  temps_craft       Int                   @default(10)
+  xp_craft          Int                   @default(10)
+  niveau_requis     Int                   @default(1)
+  ingredients       recette_ingredients[]
+  objet_resultat    objets?               @relation(fields: [objet_resultat_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("public")
 }
@@ -439,37 +385,28 @@ model recettes {
 model quetes_journalieres {
   id            String   @id @default(uuid())
   joueur_id     String   @db.Uuid
-  joueur        joueurs  @relation(fields: [joueur_id], references: [id], onDelete: Cascade)
-  
-  type          String   // EX: 'COMBAT_WIN', 'CRAFT', 'EAT', 'EXPLORE'
-  description   String   // EX: "Gagner 3 combats d'arène"
-  objectif      Int      // EX: 3
+  type          String
+  description   String
+  objectif      Int
   avancement    Int      @default(0)
-  
   xp_reward     Int      @default(100)
   berrys_reward Int      @default(500)
-  
-  est_termine   Boolean  @default(false) // Barre pleine
-  est_recupere  Boolean  @default(false) // Récompense clickée
-  
+  est_termine   Boolean  @default(false)
+  est_recupere  Boolean  @default(false)
   date_creation DateTime @default(now())
+  joueur        joueurs  @relation(fields: [joueur_id], references: [id], onDelete: Cascade)
 
   @@index([joueur_id])
   @@schema("public")
 }
 
 model recette_ingredients {
-  id                  Int @id @default(autoincrement())
+  id                  Int      @id @default(autoincrement())
   recette_id          Int
   objet_ingredient_id Int
   quantite            Int
-
-  // Relations
-  // "recette" pointe vers le champ "ingredients" qu'on a ajouté dans le modèle recettes
-  recette recettes @relation(fields: [recette_id], references: [id], onDelete: Cascade)
-
-  // "objet" pointe vers le champ "utilise_dans" qu'on a ajouté dans le modèle objets
-  objet objets @relation(fields: [objet_ingredient_id], references: [id])
+  objet               objets   @relation(fields: [objet_ingredient_id], references: [id])
+  recette             recettes @relation(fields: [recette_id], references: [id], onDelete: Cascade)
 
   @@schema("public")
 }
@@ -486,63 +423,47 @@ model titres_ref {
   @@schema("public")
 }
 
-// DANS backend/prisma/schema.prisma
-
 model meteo_ref {
-  id                String  @id @default(uuid())
-  nom               String  @unique
+  id                String @id @default(uuid())
+  nom               String @unique
   emoji             String
   description       String
-  
-  // Modificateurs (1.0 = normal, 1.5 = +50%, 0.8 = -20%)
-  coeff_xp          Float   @default(1.0)
-  coeff_berrys      Float   @default(1.0)
-  coeff_duree       Float   @default(1.0) // Pour "Vent Arrière"
-  coeff_reussite    Float   @default(1.0) // Pour "Tempête" et "Aqua Laguna"
-  coeff_loot_chance Float   @default(1.0) // Pour "Brume"
+  coeff_xp          Float  @default(1.0)
+  coeff_berrys      Float  @default(1.0)
+  coeff_duree       Float  @default(1.0)
+  coeff_reussite    Float  @default(1.0)
+  coeff_loot_chance Float  @default(1.0)
 
-  // (Optionnel) Relation si tu veux stocker la météo actuelle du serveur quelque part
-  // game_state game_state[] 
-  
   @@schema("public")
 }
 
-// TABLE 1 : Le Chapitre Global
 model histoire_chapitres {
-  id            String   @id @default(uuid())
-  faction       String   // 'PIRATE', 'MARINE', 'REVOLUTIONNAIRE'
-  numero        Int      // 1
-  titre         String   // "L'Aube de l'Aventure"
-  description   String   // Texte d'intro global
-  
-  // Récompenses de fin de chapitre
-  recompense_xp      Int @default(0)
-  recompense_berrys  Int @default(0)
-  recompense_objet_id String? // ID de l'objet (ex: Radeau)
-  
-  // Ce que ça débloque
-  unlock_island_id   Int?    // ID de l'île débloquée
-  unlock_feature     String? // Ex: 'CASINO', 'SHOP', 'ARENA'
-  
-  etapes        histoire_etapes[]
+  id                  String            @id @default(uuid())
+  faction             String
+  numero              Int
+  titre               String
+  description         String
+  recompense_xp       Int               @default(0)
+  recompense_berrys   Int               @default(0)
+  recompense_objet_id String?
+  unlock_island_id    Int?
+  unlock_feature      String?
+  etapes              histoire_etapes[]
 
   @@unique([faction, numero])
   @@schema("public")
 }
 
-// TABLE 2 : Les Étapes du Chapitre
 model histoire_etapes {
-  id            String   @id @default(uuid())
-  chapitre_id   String   
-  chapitre      histoire_chapitres @relation(fields: [chapitre_id], references: [id], onDelete: Cascade)
-  
-  ordre         Int      // 1, 2, 3...
-  type          String   // 'DIALOGUE', 'ACTION', 'LIVRAISON', 'COMBAT_PVE'
-  
-  description   String   // Le texte affiché pour cette étape
-  target_nom    String?  // "Makino", "Corde Solide", "Bandit"
-  target_id     String?  // ID technique (item_id ou enemy_id) si besoin
-  quantite      Int      @default(1)
+  id          String             @id @default(uuid())
+  chapitre_id String
+  ordre       Int
+  type        String
+  description String
+  target_nom  String?
+  target_id   String?
+  quantite    Int                @default(1)
+  chapitre    histoire_chapitres @relation(fields: [chapitre_id], references: [id], onDelete: Cascade)
 
   @@schema("public")
 }

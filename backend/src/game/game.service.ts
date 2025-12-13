@@ -2778,12 +2778,11 @@ private async createPlayerIfNotFound(userId: string): Promise<any> {
 
 // Dans backend/src/game/game.service.ts
 
-  async getPlayerData(userId: string) {
+async getPlayerData(userId: string) {
     const now = new Date();
 
-    // ⚡ OPTIMISATION 1 : Lancer la recherche Joueur ET la liste des Navires en parallèle
-    // Au lieu d'attendre l'un puis l'autre.
-    const [joueur, allNavires] = await Promise.all([
+    // 1. Recherche du joueur
+    let [joueur, allNavires] = await Promise.all([
         this.prisma.joueurs.findUnique({
             where: { id: userId },
             include: {
@@ -2792,16 +2791,57 @@ private async createPlayerIfNotFound(userId: string): Promise<any> {
                 joueur_titres: { include: { titres_ref: true } }
             }
         }),
-        this.prisma.navires_ref.findMany({ // On charge les refs en cache mémoire pour aller vite
+        this.prisma.navires_ref.findMany({ 
             include: { cout_items: { include: { objet: true } } }
         })
     ]);
 
-    // --- (Bloc création forcée inchangé si joueur n'existe pas) ---
-    if (!joueur) { /* ... ton code de création forcée ... */ throw new InternalServerErrorException("Reload please"); }
+    // 2. Création si inexistant
+    if (!joueur) {
+        console.log(`⚠️ Joueur ${userId} introuvable. TENTATIVE DE CRÉATION...`);
+        
+        try {
+            // 👇 J'AI RETIRÉ ile_id CAR IL N'EXISTE PAS
+            const newJoueur = await this.prisma.joueurs.create({
+                data: {
+                    id: userId,
+                    pseudo: `Pirate_${userId.substring(0, 5)}`,
+                    pv_actuel: 100,
+                    pv_max_base: 100,
+                    last_pv_update: new Date(),
+                    energie_actuelle: 10,
+                    last_energie_update: new Date(),
+                    niveau: 1,
+                    berrys: 100,
+                    xp: 0,
+                    points_carac: 0,
+                    force: 1,
+                    defense: 1,
+                    vitalite: 1,
+                    sagesse: 1,
+                    chance: 1,
+                    agilite: 1,
+                    intelligence: 1
+                    // ❌ ile_id supprimé !
+                }
+            });
+
+            console.log("✨ [SUCCÈS] Joueur créé !");
+            joueur = newJoueur as any;
+
+        } catch (error) {
+            console.error("❌❌❌ CRASH CRÉATION JOUEUR ❌❌❌", error);
+            // On affiche l'erreur exacte pour savoir si c'est une autre colonne qui manque
+            throw new InternalServerErrorException("Erreur création: " + error.message);
+        }
+    }
+
+    // 3. Sécurité finale
+    if (!joueur) throw new InternalServerErrorException("Joueur introuvable après tentative de création.");
 
     // --- RECONSTRUCTION EQUIPEMENT ---
     const equipementMap: any = { arme: null, tete: null, corps: null, bottes: null, bague: null, collier: null, navire: null };
+    
     if (joueur.inventaire) {
         joueur.inventaire.forEach(invItem => {
             if (invItem.est_equipe && invItem.objets) {
@@ -2817,10 +2857,9 @@ private async createPlayerIfNotFound(userId: string): Promise<any> {
         });
     }
 
-    // --- CALCULS & REGENERATION (SANS ÉCRITURE BDD) ---
+    // --- CALCULS STATS & REGENERATION ---
     const stats = this.calculatePlayerStats(joueur);
     
-    // 1. Calcul PV Virtuels
     const lastPvUpdate = joueur.last_pv_update ? new Date(joueur.last_pv_update) : now;
     const hoursElapsedPv = Math.floor((now.getTime() - lastPvUpdate.getTime()) / 3600000);
     let virtualPv = joueur.pv_actuel ?? 0;
@@ -2830,7 +2869,6 @@ private async createPlayerIfNotFound(userId: string): Promise<any> {
         virtualPv = Math.min((joueur.pv_actuel ?? 0) + healAmount, stats.pv_max_total);
     }
 
-    // 2. Calcul Energie Virtuelle
     const MAX_ENERGIE = 10;
     const REGEN_TIME_MS = 3600000;
     const lastEnergieUpdate = joueur.last_energie_update ? new Date(joueur.last_energie_update) : now;
@@ -2845,7 +2883,6 @@ private async createPlayerIfNotFound(userId: string): Promise<any> {
         
         virtualEnergie = Math.min(currentStoredEnergie + energyGained, MAX_ENERGIE);
         
-        // Calcul du temps restant pour le prochain point
         const msUsedForGain = energyGained * REGEN_TIME_MS;
         const msRestant = msElapsed - msUsedForGain;
         timeUntilNextRegenMs = Math.max(0, REGEN_TIME_MS - msRestant);
@@ -2853,16 +2890,11 @@ private async createPlayerIfNotFound(userId: string): Promise<any> {
         if (virtualEnergie >= MAX_ENERGIE) timeUntilNextRegenMs = 0;
     }
 
-    // ⚡ OPTIMISATION 2 : ON NE FAIT PAS D'UPDATE BDD ICI !
-    // On renvoie juste les valeurs calculées. La BDD sera mise à jour 
-    // seulement quand le joueur cliquera sur "Combattre" ou "Travailler".
-
-    // --- INFO PROCHAIN NAVIRE (Optimisé via tableau en mémoire) ---
+    // --- INFO PROCHAIN NAVIRE ---
     let nextNavireData: any = null;
     let niveauActuel = 1;
     
     if (equipementMap.navire) {
-        // Recherche en mémoire (rapide) au lieu de refaire une requête BDD
         const currentRef = allNavires.find(n => n.nom === equipementMap.navire.objets.nom);
         if (currentRef) niveauActuel = currentRef.niveau;
     }
@@ -2874,7 +2906,7 @@ private async createPlayerIfNotFound(userId: string): Promise<any> {
             niveau: nextShipRef.niveau,
             nom: nextShipRef.nom,
             description: nextShipRef.description,
-            cout_berrys: Number(nextShipRef.prix_berrys),
+            cout_berrys: Number(nextShipRef.prix_berrys), // Conversion sécurisée pour le Frontend
             image_url: nextShipRef.image_url,
             listeMateriaux: nextShipRef.cout_items.map(cout => ({
                 id: cout.objet.id,
@@ -2887,8 +2919,8 @@ private async createPlayerIfNotFound(userId: string): Promise<any> {
 
     return {
         ...joueur,
-        pv_actuel: virtualPv,          // On renvoie le calcul
-        energie_actuelle: virtualEnergie, // On renvoie le calcul
+        pv_actuel: virtualPv,
+        energie_actuelle: virtualEnergie,
         statsTotales: stats,
         max_energie: MAX_ENERGIE,
         next_energie_in_ms: timeUntilNextRegenMs,
