@@ -22,16 +22,24 @@ const MapTab = ({ destinations, joueur, expeditionChrono, onTravel, onCollect, t
         mapRef.current.scrollTop = startPos.current.top - dy;
     };
 
-    // --- CALCUL CHANCE ---
+   // --- CALCUL CHANCE (Basé sur le Niveau) ---
     const getSuccessRate = (dest) => {
-        if (!equipement) return 50;
-        const force = (joueur.force_brute || 0) + (equipement.arme?.stats_bonus?.force || 0);
-        const intel = (joueur.intelligence || 0) + (equipement.tete?.stats_bonus?.intelligence || 0);
-        const agi = (joueur.agilite || 0) + (equipement.corps?.stats_bonus?.agilite || 0);
-        const puissance = (force * 1.5) + (agi * 1.2) + (intel * 1.0);
-        const diff = dest.niveau_requis * 25;
-        let chance = 50 + (puissance - diff);
-        return Math.max(5, Math.min(100, Math.floor(chance)));
+        if (!joueur) return 0;
+
+        // 1. Difficulté de l'île (Fallback sur ID si pas de niveau requis)
+        const difficulty = dest.niveau_requis || (dest.id * 5); 
+        const playerLevel = joueur.niveau || 1;
+
+        // 2. Formule : Ratio Niveau / Difficulté
+        // Ex: Joueur Niv 5 sur Île Niv 10 = 0.5 (50%)
+        // Ex: Joueur Niv 10 sur Île Niv 10 = 1.0 (100%)
+        let ratio = playerLevel / Math.max(1, difficulty);
+
+        // 3. Bonus : On multiplie par 110 pour être gentil (atteindre 100% un peu avant le niveau requis)
+        let percent = Math.floor(ratio * 110);
+
+        // 4. Bornes (Min 10% - Max 100%)
+        return Math.max(10, Math.min(100, percent));
     };
 
     // --- DONNÉES MÉTÉO SÉCURISÉES ---

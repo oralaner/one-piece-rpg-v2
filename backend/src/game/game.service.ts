@@ -3474,32 +3474,80 @@ async unlockTitle(userId: string, nomTitre: string) {
   }
 
 // =================================================================
-  // 2. RÉCOLTE EXPÉDITION
+  // 2. RÉCOLTE EXPÉDITION (CORRIGÉE : FETCH MANUEL)
   // =================================================================
   async recolterExpedition(dto: { userId: string }) {
+    // 1. Récupération du joueur (Sans inclure 'localisation' qui bug)
     const joueur = await this.prisma.joueurs.findUnique({ 
         where: { id: dto.userId },
-        include: { equip_corps: true } 
+        include: { equip_corps: true } // On garde juste l'équipement
     });
 
     if (!joueur) throw new BadRequestException("Joueur introuvable.");
     if (!joueur.expedition_fin || new Date(joueur.expedition_fin).getTime() > new Date().getTime()) {
-        throw new BadRequestException("Patience...");
+        throw new BadRequestException("Patience... Les marins ne sont pas revenus.");
     }
     
-    // Gains
-    const joueurNiveau = joueur.niveau || 1;
-    // ... (Logique loot table inchangée) ...
-    let lootTable = LOOT_VOYAGE_TABLES.LOW; 
-    if (joueurNiveau > 10) lootTable = LOOT_VOYAGE_TABLES.MEDIUM; 
-    // (Simplifié pour la réponse, gardez votre logique de table)
+    // --- 2. RÉCUPÉRATION MANUELLE DE LA DESTINATION ---
+    // On utilise l'ID stocké dans le joueur pour trouver l'île
+    let destination: any = null;
+    if (joueur.localisation_id) {
+        destination = await this.prisma.destinations.findUnique({
+            where: { id: joueur.localisation_id }
+        });
+    }
 
-    const gainXP = this.getRandomQuantity(50, 100) * joueurNiveau; 
-    const gainBerrys = this.getRandomQuantity(500, 1500) * Math.max(1, Math.floor(joueurNiveau / 2)); 
+    // --- 3. CALCUL DE LA RÉUSSITE ---
+    const difficulty = destination?.niveau_requis || 10; // Valeur par défaut si bug ou ID null
+    const playerLevel = joueur.niveau || 1;
+
+    // Formule : Ratio Niveau / Difficulté
+    let ratio = playerLevel / Math.max(1, difficulty);
+    let chancePercent = Math.floor(ratio * 110); // Bonus x1.1
+    chancePercent = Math.min(100, Math.max(10, chancePercent)); // Entre 10% et 100%
+
+    // 🎲 TIRAGE AU SORT
+    const roll = Math.random() * 100;
+    const isSuccess = roll <= chancePercent;
+
+    console.log(`🎲 Expédition ${joueur.pseudo} : ${chancePercent}% chance. Roll: ${roll.toFixed(1)} -> ${isSuccess ? "SUCCÈS" : "ÉCHEC"}`);
+
+    // --- CAS D'ÉCHEC ---
+    if (!isSuccess) {
+        // Gain de consolation (juste un peu d'XP, pas d'objets)
+        const xpConsolation = Math.floor(50 * Math.max(1, playerLevel / 2));
+        
+        await this.prisma.joueurs.update({
+            where: { id: dto.userId },
+            data: { 
+                expedition_fin: null, // On libère le joueur
+                xp: { increment: xpConsolation }
+            }
+        });
+        
+        await this.clearCache(dto.userId);
+
+        return {
+            success: false,
+            message: "L'expédition a échoué... Vos hommes sont revenus fatigués.",
+            rewards: { xp: xpConsolation, berrys: 0, items: [] },
+            leveledUp: false,
+            newLevel: playerLevel
+        };
+    }
+
+    // --- CAS DE RÉUSSITE ---
+    
+    // Logique loot table
+    let lootTable = LOOT_VOYAGE_TABLES.LOW; 
+    if (playerLevel > 10) lootTable = LOOT_VOYAGE_TABLES.MEDIUM; 
+
+    const gainXP = this.getRandomQuantity(50, 100) * playerLevel; 
+    const gainBerrys = this.getRandomQuantity(500, 1500) * Math.max(1, Math.floor(playerLevel / 2)); 
 
     let itemRewards: any[] = [];
     let isLeveledUp = false;
-    let currentNewLevel = joueurNiveau;
+    let currentNewLevel = playerLevel;
 
     await this.prisma.$transaction(async (tx) => {
         const loot = await this.generateActivityLoot(lootTable, tx);
@@ -3513,17 +3561,16 @@ async unlockTitle(userId: string, nomTitre: string) {
 
         // Compléter updateData
         updateData.berrys = { increment: gainBerrys };
-        updateData.expedition_fin = null;
+        updateData.expedition_fin = null; // On libère le joueur
         updateData.nb_expeditions_reussies = { increment: 1 };
-
 
         // UPDATE JOUEUR
         await tx.joueurs.update({
             where: { id: dto.userId },
-            data: updateData // Utilisation stricte de l'objet calculé
+            data: updateData
         });
 
-        // Inventaire (inchangé)
+        // Inventaire
         for (const reward of itemRewards) {
             const objet = reward.objet_data;
             const existing = await tx.inventaire.findFirst({ where: { joueur_id: dto.userId, objet_id: objet.id } });
@@ -3532,6 +3579,7 @@ async unlockTitle(userId: string, nomTitre: string) {
             } else {
                 await tx.inventaire.create({ data: { joueur_id: dto.userId, objet_id: objet.id, quantite: reward.quantite, stats_perso: Prisma.DbNull } });
             }
+            // Nettoyage pour le retour JSON
             reward.nom = objet.nom;
             reward.rarity = objet.rarete;
             reward.image_url = objet.image_url;
@@ -3540,10 +3588,11 @@ async unlockTitle(userId: string, nomTitre: string) {
     });
 
     await this.clearCache(dto.userId);
+    this.updateQuestProgress(dto.userId, 'EXPLORE_ISLAND', 1);
 
     return {
         success: true,
-        message: isLeveledUp ? `Retour ! NIVEAU ${currentNewLevel} !` : `Expédition terminée !`,
+        message: isLeveledUp ? `Succès ! NIVEAU ${currentNewLevel} ATTEINT !` : `Expédition réussie !`,
         rewards: { xp: gainXP, berrys: gainBerrys, items: itemRewards },
         leveledUp: isLeveledUp,
         newLevel: currentNewLevel
