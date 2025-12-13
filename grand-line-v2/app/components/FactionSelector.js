@@ -6,16 +6,27 @@ const FactionSelector = ({ onSelect, userId }) => {
 
     const handleChoose = async (faction) => {
         if (loading) return;
-        setLoading(true);
+        setLoading(true); // On bloque le bouton
         try {
-            // ✅ Appel simple à l'ancienne route
+            console.log("Choix faction envoyé :", faction); // Debug
+            
+            // 1. On envoie la requête
             await api.post('/game/faction/choose', { userId, faction });
             
-            onSelect(); 
-            window.location.reload();
+            console.log("Faction enregistrée ! Rechargement...");
+
+            // 2. On informe le parent (optionnel mais propre)
+            if (onSelect) onSelect(); 
+            
+            // 3. On force le rechargement APRÈS un petit délai pour laisser la BDD respirer
+            setTimeout(() => {
+                window.location.reload();
+            }, 500);
+
         } catch (e) {
+            console.error("Erreur choix faction :", e);
             alert("Erreur lors du choix : " + (e.response?.data?.message || e.message));
-            setLoading(false);
+            setLoading(false); // On débloque si erreur
         }
     };
 
