@@ -438,7 +438,7 @@ async getDailyQuests(userId: string) {
       return { success: true, message: `Récompense : +${quest.xp_reward} XP, +${quest.berrys_reward} ฿` };
   }
 
-  async getPlayerData(userId: string) {
+async getPlayerData(userId: string, discordPseudo?: string, discordAvatar?: string) {
     const now = new Date();
 
     // 1. Recherche du joueur
@@ -456,15 +456,23 @@ async getDailyQuests(userId: string) {
         })
     ]);
 
-    // 2. CRÉATION AUTOMATIQUE (RESTAURÉE)
+    // 2. CRÉATION AUTOMATIQUE INTELLIGENTE
     if (!joueur) {
-        console.log(`⚠️ Joueur ${userId} introuvable. CRÉATION AUTO...`);
+        console.log(`⚠️ Joueur ${userId} introuvable.`);
+        console.log(`✨ CRÉATION AUTO avec Pseudo: ${discordPseudo}`);
         
         try {
+            // Nettoyage du pseudo (max 15 caractères, pas de caractères bizarres si possible)
+            // On garde le pseudo Discord s'il existe, sinon fallback
+            const finalPseudo = discordPseudo || `Pirate_${userId.substring(0, 5)}`;
+
             const newJoueur = await this.prisma.joueurs.create({
                 data: {
                     id: userId,
-                    pseudo: `Pirate_${userId.substring(0, 5)}`,
+                    pseudo: finalPseudo, 
+                    avatar_url: discordAvatar || null, // ✅ On sauvegarde l'avatar Discord !
+                    
+                    // Stats de départ
                     pv_actuel: 100,
                     pv_max_base: 100,
                     last_pv_update: new Date(),
@@ -485,16 +493,19 @@ async getDailyQuests(userId: string) {
             });
 
             console.log("✨ [SUCCÈS] Joueur créé !");
-            joueur = newJoueur as any; // On force le type pour dire "c'est bon"
+            joueur = newJoueur as any;
 
         } catch (error) {
             console.error("❌ CRASH CRÉATION JOUEUR", error);
+            // Si le pseudo Discord est déjà pris, on ajoute un suffixe aléatoire et on réessaie
+            if (error.code === 'P2002') { // Erreur d'unicité Prisma
+                 const suffix = Math.floor(Math.random() * 1000);
+                 return this.getPlayerData(userId, `${discordPseudo}_${suffix}`, discordAvatar);
+            }
             throw new InternalServerErrorException("Erreur création: " + error.message);
         }
     }
 
-    // 🛑 LE GARDE-FOU SUPPRÊME :
-    // Cette ligne rassure TypeScript. Si on arrive ici, joueur EXISTE forcément.
     if (!joueur) throw new InternalServerErrorException("Erreur critique: Joueur introuvable.");
 
     // --- RECONSTRUCTION EQUIPEMENT (Inchangé) ---

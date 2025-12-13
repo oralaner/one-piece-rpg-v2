@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 
-// 👇 AJOUT DE 'jwt' EN 2ÈME ARGUMENT
 @Injectable()
 export class SupabaseStrategy extends PassportStrategy(Strategy, 'jwt') { 
   constructor() {
@@ -14,6 +13,17 @@ export class SupabaseStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   async validate(payload: any) {
-    return { userId: payload.sub, email: payload.email };
+    // 🔍 INSPECTION DU TOKEN
+    // Supabase stocke les infos Discord dans "user_metadata"
+    const metadata = payload.user_metadata || {};
+
+    return { 
+        userId: payload.sub, 
+        email: payload.email,
+        // On récupère le pseudo (souvent 'full_name' ou 'name' pour Discord)
+        pseudo: metadata.full_name || metadata.name || metadata.user_name || `Pirate_${payload.sub.substring(0,5)}`,
+        // On récupère l'avatar
+        avatarUrl: metadata.avatar_url || metadata.picture || null
+    };
   }
 }
