@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 
-// 👇 MODIFICATION ICI : Même variable que pour l'API
+// On garde cette constante, elle est très bien pour gérer le localhost si besoin
 const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 export const useSocket = (session, activeTab, crewId) => {
@@ -9,15 +9,19 @@ export const useSocket = (session, activeTab, crewId) => {
     const [messages, setMessages] = useState([]);
 
     useEffect(() => {
+        // Sécurité : Si pas de session, on ne connecte rien
         if (!session?.user?.id) return;
 
-        const newSocket = io(process.env.NEXT_PUBLIC_API_URL, {
-  transports: ['websocket'], // 👈 OBLIGATOIRE : Force le mode WebSocket direct
-  withCredentials: true,     // OBLIGATOIRE : Pour l'auth
-  query: {
-    userId: user?.id
-  }
-});
+        // 👇 CORRECTION ICI
+        const newSocket = io(SOCKET_URL, { // Utilise SOCKET_URL ici, c'est plus propre
+            transports: ['websocket'],
+            withCredentials: true,
+            query: {
+                // ❌ Avant (Erreur) : userId: user?.id 
+                // ✅ Après (Correction) : On utilise 'session'
+                userId: session.user.id 
+            }
+        });
 
         setSocket(newSocket);
 
