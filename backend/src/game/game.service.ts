@@ -456,53 +456,55 @@ async getPlayerData(userId: string, discordPseudo?: string, discordAvatar?: stri
         })
     ]);
 
-    // 2. CRÉATION AUTOMATIQUE INTELLIGENTE
+    // 2. CRÉATION AUTOMATIQUE
     if (!joueur) {
-        console.log(`⚠️ Joueur ${userId} introuvable.`);
-        console.log(`✨ CRÉATION AUTO avec Pseudo: ${discordPseudo}`);
+        console.log(`⚠️ Joueur ${userId} introuvable. CRÉATION AUTO...`);
         
         try {
-            // Nettoyage du pseudo (max 15 caractères, pas de caractères bizarres si possible)
-            // On garde le pseudo Discord s'il existe, sinon fallback
             const finalPseudo = discordPseudo || `Pirate_${userId.substring(0, 5)}`;
 
-            const newJoueur = await this.prisma.joueurs.create({
+            // ÉTAPE A : CRÉATION (La BDD mettra peut-être "Pirate" par défaut, on s'en fiche pour l'instant)
+            let newJoueur = await this.prisma.joueurs.create({
                 data: {
                     id: userId,
                     pseudo: finalPseudo, 
                     avatar_url: discordAvatar || null,
                     
-                    // Stats de départ
-                    pv_actuel: 100,
-                    pv_max_base: 100,
-                    last_pv_update: new Date(),
-                    energie_actuelle: 10,
-                    last_energie_update: new Date(),
+                    // On ne définit pas la faction ici, on laisse la BDD faire ou on met null si elle accepte
+                    faction: null, 
                     
+                    // Stats de départ (Niveau 1, Stats 0, 5 points à distribuer)
                     niveau: 1,
                     xp: 0,
                     berrys: 100,
-
-                    // 👇 C'EST ICI QUE ÇA CHANGE
-                    points_carac: 5, // ✅ On donne 5 points pour le Tuto
-                    
-                    force: 0,        // 0 partout ailleurs
-                    defense: 0,
-                    vitalite: 0,
-                    sagesse: 0,
-                    chance: 0,
-                    agilite: 0,
-                    intelligence: 0,
+                    points_carac: 5, 
+                    force: 0, defense: 0, vitalite: 0, sagesse: 0, 
+                    chance: 0, agilite: 0, intelligence: 0,
+                    pv_actuel: 100, pv_max_base: 100,
+                    energie_actuelle: 10,
+                    last_pv_update: new Date(), last_energie_update: new Date()
                 }
             });
 
-            console.log("✨ [SUCCÈS] Joueur créé !");
+            // ÉTAPE B : LE NETTOYAGE (Force Update)
+            // On s'assure à 100% que la faction est NULL pour déclencher le sélecteur
+            if (newJoueur.faction !== null) {
+                console.log("🧹 Nettoyage : Suppression de la faction par défaut...");
+                const updated = await this.prisma.joueurs.update({
+                    where: { id: userId },
+                    data: { faction: null }
+                });
+                // On met à jour l'objet local pour le renvoyer au frontend
+                newJoueur = updated;
+            }
+
+            console.log("✨ [SUCCÈS] Joueur créé et prêt pour le choix de faction !");
             joueur = newJoueur as any;
 
         } catch (error) {
             console.error("❌ CRASH CRÉATION JOUEUR", error);
-            // Si le pseudo Discord est déjà pris, on ajoute un suffixe aléatoire et on réessaie
-            if (error.code === 'P2002') { // Erreur d'unicité Prisma
+            // Gestion du doublon de pseudo
+            if (error.code === 'P2002') { 
                  const suffix = Math.floor(Math.random() * 1000);
                  return this.getPlayerData(userId, `${discordPseudo}_${suffix}`, discordAvatar);
             }
@@ -1208,7 +1210,7 @@ async sellItem(dto: SellItemDto) {
   }
 
 // =================================================================
-  // ⚔️ JOUER UN TOUR (Vérification Stricte Armes & Fruits)
+  // ⚔️ JOUER UN TOUR (CORRIGÉ : Prise en compte du Stuff Adversaire)
   // =================================================================
   async playTurn(dto: PlayTurnDto) {
     const combat = await this.prisma.combats.findUnique({ where: { id: dto.combatId } });
@@ -1220,87 +1222,94 @@ async sellItem(dto: SellItemDto) {
         where: { id: combat.joueur_id! },
         include: {
             inventaire: { include: { objets: true } }, 
+            // On inclut les relations directes au cas où, mais inventaire suffit pour calculatePlayerStats
             equip_tete: true, equip_corps: true, equip_bottes: true,
             equip_bague: true, equip_collier: true
         }
     });
 
-    const adversaire = await this.prisma.joueurs.findUnique({ where: { id: combat.adversaire_id! } });
+    // 🔥 CORRECTION ICI : On charge aussi l'équipement de l'adversaire !
+    const adversaire = await this.prisma.joueurs.findUnique({ 
+        where: { id: combat.adversaire_id! },
+        include: {
+            inventaire: { include: { objets: true } } // Indispensable pour les stats
+        }
+    });
+
     if (!attaquant || !adversaire) throw new BadRequestException("Combattants introuvables.");
 
     const skill = await this.prisma.competences.findUnique({ where: { id: dto.skillId } });
     if (!skill) throw new BadRequestException("Compétence inconnue.");
 
     // =================================================================
-    // 🛡️ DÉTECTION DU TYPE DE LA COMPÉTENCE (VERSION CORRIGÉE)
+    // 📊 CALCUL DES STATS TOTALES (JOUEUR & ADVERSAIRE)
     // =================================================================
     
-    // On s'assure qu'on a bien chargé l'arme (Sécurité)
+    // Stats du Joueur
+    const statsAtk = this.calculatePlayerStats(attaquant);
+
+    // Stats de l'Adversaire (Bot ou Joueur)
+    // Par défaut, on prend les stats calculées (Stuff inclus)
+    const statsAdv = this.calculatePlayerStats(adversaire);
+    
+    let forceBot = statsAdv.force;
+    let defenseBot = statsAdv.defense;
+
+    // Si c'est un BOT (PNJ), on applique le scaling par niveau si ses stats sont faibles
+    if (adversaire.is_bot) {
+        const niv = adversaire.niveau ?? 1;
+        // Si le bot n'a pas de stats définies manuellement en BDD, on boost
+        if (forceBot < 5) forceBot = 10 + (niv * 4); 
+        if (defenseBot < 5) defenseBot = 5 + (niv * 2);
+    }
+
+    // =================================================================
+    // 🛡️ DÉTECTION DU TYPE DE LA COMPÉTENCE
+    // =================================================================
+    
     const armeEquipee = attaquant.inventaire.find(i => i.est_equipe && i.objets.type_equipement === 'MAIN_DROITE');
     const nomArme = (armeEquipee?.objets?.nom || "").toUpperCase();
     const nomSkill = skill.nom.toUpperCase();
     const typeSkill = (skill.type_degats || "").toUpperCase();
 
-
-    // LISTES DE MOTS-CLÉS
+    // ... (Ton code de vérification Arme/Skill reste inchangé ici) ...
+    // Je remets le bloc complet pour éviter les erreurs de copier-coller
     const KW_SKILL_SWORD = ["COUPE", "ESTOCADE", "LAME", "SABRE", "CHASSEUR", "TOURBILLON", "CHANT", "TROIS", "KAMUSARI", "SLASH", "ZORO", "ONIGIRI"];
     const KW_ITEM_SWORD  = ["SABRE", "ÉPÉE", "EPEE", "KATANA", "LAME", "DAGUE", "COUTEAU", "YORU", "WADO", "KITETSU"];
-
     const KW_SKILL_GUN   = ["TIR", "BALLE", "RAFALE", "CANON", "SNIPER", "PLOMB", "EXPLOSIVE", "MOUSQUET", "PRÉCISION", "MITRAIL"];
     const KW_ITEM_GUN    = ["PISTOLET", "FUSIL", "LANCE", "CANON", "SNIPER", "MOUSQUET", "REVOLVER", "BAZOOKA", "ARC", "ARBALÈTE", "FLINGUE", "BASIQUE"];
-
     const FRUIT_TYPES    = ['FEU', 'GLACE', 'FOUDRE', 'ELASTIQUE', 'SPECIAL', 'MAGMA', 'LUMIERE', 'TENEBRES', 'GRAVITE', 'POISON', 'OP'];
 
     let skillCategory = 'PHYSIQUE';
 
-    // A. FRUIT
     if (FRUIT_TYPES.includes(typeSkill)) {
         skillCategory = 'FRUIT';
     }
-    // B. SABRE
     else if (KW_SKILL_SWORD.some(k => nomSkill.includes(k))) {
         skillCategory = 'SABRE';
         const hasSword = KW_ITEM_SWORD.some(k => nomArme.includes(k));
         if (!hasSword) throw new BadRequestException(`🚫 Il te faut une Épée/Sabre pour utiliser "${skill.nom}" !`);
     }
-    // C. DISTANCE / ARME A FEU
     else if (typeSkill === 'DISTANCE' || KW_SKILL_GUN.some(k => nomSkill.includes(k))) {
         skillCategory = 'DISTANCE';
-        
-        // Vérification plus souple
         const hasGun = KW_ITEM_GUN.some(k => nomArme.includes(k));
-        
-        // Exception : "Tir de Pierre" (souvent skill de base sans arme)
-        if (nomSkill.includes("PIERRE")) {
-            // Passe toujours
-        } 
+        if (nomSkill.includes("PIERRE")) { /* Passe */ } 
         else if (!hasGun) {
-            throw new BadRequestException(`🚫 Il te faut une Arme à distance pour utiliser "${skill.nom}" ! (Tu as : ${nomArme || "Rien"})`);
+            throw new BadRequestException(`🚫 Il te faut une Arme à distance pour utiliser "${skill.nom}" !`);
         }
     }
-    // =================================================================
-    // 💥 CALCUL DES DÉGÂTS
-    // =================================================================
-    
-    // Stats du Bot
-    let forceBot = adversaire.force ?? 10;
-    let defenseBot = adversaire.defense ?? 5;
-    if (adversaire.is_bot) {
-        const niv = adversaire.niveau ?? 1;
-        forceBot = 10 + (niv * 4); 
-        defenseBot = 5 + (niv * 2);
-    }
 
-    // Stats du Joueur (Adaptées selon l'arme utilisée)
-    const statsAtk = this.calculatePlayerStats(attaquant);
+    // =================================================================
+    // 💥 TOUR JOUEUR : CALCUL DES DÉGÂTS
+    // =================================================================
+
     let statUtilisee = statsAtk.force; 
-
-    if (skillCategory === 'DISTANCE') statUtilisee = statsAtk.agilite; // Tireur = Agilité
-    if (skillCategory === 'FRUIT') statUtilisee = statsAtk.intelligence * 1.5; // Fruit = Intelligence
+    if (skillCategory === 'DISTANCE') statUtilisee = statsAtk.agilite;
+    if (skillCategory === 'FRUIT') statUtilisee = statsAtk.intelligence * 1.5;
 
     const skillPower = skill.puissance ?? 10;
 
-    // Formule : (Stat + Skill) * Random - Defense/2
+    // Dégâts Joueur vs Défense Totale Adversaire
     let degatsJoueur = Math.floor( (statUtilisee + skillPower) * (0.9 + Math.random() * 0.2) ) - Math.floor(defenseBot / 2);
     if (degatsJoueur < 1) degatsJoueur = 1;
 
@@ -1318,26 +1327,24 @@ async sellItem(dto: SellItemDto) {
 
     // --- VICTOIRE JOUEUR ---
     if (pvAdvRestant <= 0) {
+        // ... (Ton bloc victoire reste inchangé) ...
+        // Je le remets pour être complet
         const gainXp = 50 * (adversaire.niveau ?? 1);
         const gainBerrys = 100 * (adversaire.niveau ?? 1);
         const gainElo = adversaire.is_bot ? 0 : 15;
 
-        // 🔥 LOGIQUE LEVEL UP & SOIN 🔥
         let newXp = (attaquant.xp || 0) + gainXp;
         let newLevel = attaquant.niveau || 1;
         let levelsGained = 0;
 
-        // 1. Calcul du passage de niveau
-        // Formule : XP requis = Niveau Actuel * 1000
         while (newXp >= newLevel * 1000) {
-            newXp -= newLevel * 1000; // On retire le coût du niveau actuel
-            newLevel++;               // On monte de niveau
+            newXp -= newLevel * 1000;
+            newLevel++;                
             levelsGained++;
         }
 
-        // 2. Préparation de l'objet de mise à jour
         const updateData: any = {
-            xp: newXp, // ⚠️ IMPORTANT : On SET la valeur restante, on ne fait pas d'increment
+            xp: newXp,
             niveau: newLevel,
             berrys: { increment: gainBerrys },
             victoires: { increment: 1 },
@@ -1347,29 +1354,18 @@ async sellItem(dto: SellItemDto) {
         };
 
         let finalLog = "VICTOIRE !";
-
-        // 3. Application des Bonus si Level Up
         if (levelsGained > 0) {
             finalLog += ` NIVEAU UP ! (Niv ${newLevel})`;
-
-            // A. Bonus de stats (+2 partout par niveau gagné)
-            const bonusStat = levelsGained * 2;
-            updateData.force = { increment: bonusStat };
-            updateData.defense = { increment: bonusStat };
-            updateData.agilite = { increment: bonusStat };
-            updateData.intelligence = { increment: bonusStat };
-            updateData.vitalite = { increment: bonusStat };
-
-            // B. SOIN TOTAL (Régénération)
-            // On calcule le NOUVEAU Max PV théorique pour soigner le joueur à 100%
-            // Ancien Max + (Gain Vitalité * 10) + (Gain Niveau * 20)
-            const bonusPvFromVit = bonusStat * 10; 
-            const bonusPvFromLevel = levelsGained * 20;
-            const newPvMax = statsAtk.pv_max_total + bonusPvFromVit + bonusPvFromLevel;
-            updateData.pv_actuel = newPvMax; // ❤️ On remet les PV à fond
+            const bonusStat = levelsGained * 5; // Correction : 5 pts par niveau
+            updateData.points_carac = { increment: bonusStat };
+            
+            // Soin Level Up
+            const bonusPvFromLevel = levelsGained * 20; // Approx
+            const newPvMax = statsAtk.pv_max_total + bonusPvFromLevel; 
+            updateData.pv_actuel = newPvMax;
+            updateData.energie_actuelle = 10;
         }
 
-        // 4. Exécution de la transaction
         await this.prisma.$transaction([
             this.prisma.combats.update({
                 where: { id: combat.id },
@@ -1393,7 +1389,7 @@ async sellItem(dto: SellItemDto) {
             log_joueur: logJ, 
             log_ia: levelsGained > 0 ? `Niveau ${newLevel} atteint !` : "L'adversaire est K.O. !", 
             pv_adv: 0, 
-            pv_moi: levelsGained > 0 ? updateData.pv_actuel : combat.pv_joueur_actuel, // Affiche PV max si level up
+            pv_moi: levelsGained > 0 ? updateData.pv_actuel : combat.pv_joueur_actuel, 
             gain_xp: gainXp, 
             gain_berrys: gainBerrys, 
             gain_elo: gainElo,
@@ -1401,7 +1397,13 @@ async sellItem(dto: SellItemDto) {
         };
     }
 
-    // --- TOUR IA ---
+    // =================================================================
+    // 🤖 TOUR ADVERSAIRE (IA)
+    // =================================================================
+    
+    // 🔥 ICI C'EST LE FIX : On utilise forceBot qui contient maintenant le BONUS D'ARME
+    // (Calculé tout en haut via statsAdv.force)
+    
     let degatsIA = Math.floor( forceBot * (0.8 + Math.random() * 0.4) ) - Math.floor(statsAtk.defense / 3);
     if (degatsIA < 1) degatsIA = 1;
 
@@ -1412,8 +1414,6 @@ async sellItem(dto: SellItemDto) {
 
     // --- DÉFAITE ---
     if (pvJoueurRestant <= 0) {
-        
-        // 💸 PÉNALITÉ : 50% des Berrys
         const perteBerrys = Math.floor((attaquant.berrys || 0) * 0.50);
         const msgDefaite = `DÉFAITE... Tu t'effondres et perds ${perteBerrys.toLocaleString()} ฿.`;
 
@@ -1425,7 +1425,6 @@ async sellItem(dto: SellItemDto) {
                     pv_adversaire_actuel: pvAdvRestant, 
                     pv_joueur_actuel: 0, 
                     vainqueur_id: adversaire.id, 
-                    // On ajoute le message de la perte d'argent dans l'historique
                     log_combat: [...(combat.log_combat as any[]), logJ, logIA, msgDefaite] 
                 }
             }),
@@ -1434,8 +1433,9 @@ async sellItem(dto: SellItemDto) {
                 data: { 
                     defaites: { increment: 1 }, 
                     defaites_pve: adversaire.is_bot ? { increment: 1 } : undefined,
+                    defaites_pvp: !adversaire.is_bot ? { increment: 1 } : undefined,
                     pv_actuel: 0,
-                    berrys: { decrement: perteBerrys } // 📉 RETRAIT DES 50% ICI
+                    berrys: { decrement: perteBerrys }
                 } 
             })
         ]);
@@ -1445,7 +1445,7 @@ async sellItem(dto: SellItemDto) {
         return { 
             etat: 'DEFAITE', 
             log_joueur: logJ, 
-            log_ia: logIA + " " + msgDefaite, // On concatène pour l'affichage immédiat
+            log_ia: logIA + " " + msgDefaite, 
             pv_adv: pvAdvRestant, 
             pv_moi: 0 
         };
