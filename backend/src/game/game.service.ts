@@ -2969,7 +2969,7 @@ async createPlayer(userId: string, pseudo: string, faction: string) {
         data: {
             id: userId,
             pseudo: pseudo,
-            faction: faction || 'Pirate', // ✅ On enregistre la faction (défaut Pirate)
+            faction: null, // ✅ On enregistre la faction (défaut Pirate)
             
             // Stats de départ
             niveau: 1,
