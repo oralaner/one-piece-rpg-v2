@@ -142,33 +142,37 @@ export default function Home() {
         </main>
     );
 
-    // ✅ CAS 1 : JOUEUR INEXISTANT (Erreur 404 du Backend)
-    // On affiche l'écran de création
-    if (isNewPlayer) {
+    // 1. SI ÇA CHARGE ENCORE -> On affiche le loader
+    // (On utilise game.loading au lieu de !joueur pour être plus précis)
+    if (game.loading) {
+        return <div className="flex h-screen items-center justify-center text-cyan-400 font-black animate-pulse">Chargement...</div>;
+    }
+
+    // 2. SI CHARGEMENT FINI MAIS PAS DE JOUEUR -> C'est un nouveau compte !
+    // On affiche le sélecteur de faction
+    if (isNewPlayer || !joueur) {
         return (
-            <div className="fixed inset-0 bg-slate-900 z-50 flex items-center justify-center">
+            <div className="fixed inset-0 bg-slate-950 z-50 flex items-center justify-center">
                 <FactionSelector 
                     userId={game.session.user.id} 
                     onSelect={() => {
-                        window.location.reload(); // On reload pour être sûr de repartir propre
+                        // Petit reload pour repartir sur des bases saines après la création
+                        window.location.reload();
                     }} 
                 />
             </div>
         );
     }
-    if (!joueur) return <div className="flex h-screen items-center justify-center text-cyan-400 font-black animate-pulse">Chargement...</div>;
-    // CAS 2 : JOUEUR CHARGÉ MAIS DONNÉES INCOMPLÈTES (Backup)
-    if (joueur && !joueur.faction) {
-            return (
-                <FactionSelector 
-                    userId={joueur.id} 
-                    onSelect={() => queryClient.invalidateQueries(['playerData'])} 
-                />
-            );
-    }
 
-    // CAS 3 : CHARGEMENT EN COURS
-    if (!joueur) return <div className="flex h-screen items-center justify-center text-cyan-400 font-black animate-pulse">Chargement...</div>;
+    // 3. SI JOUEUR EXISTE MAIS PAS DE FACTION (Cas rare de backup)
+    if (joueur && !joueur.faction) {
+        return (
+            <FactionSelector 
+                userId={joueur.id} 
+                onSelect={() => window.location.reload()} 
+            />
+        );
+    }
     
     // --- LISTE DES ONGLETS (Configuration) ---
     const tabs = [
