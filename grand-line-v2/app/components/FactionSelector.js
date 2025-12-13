@@ -3,18 +3,43 @@ import { api } from '../utils/api';
 
 const FactionSelector = ({ onSelect, userId }) => {
     const [loading, setLoading] = useState(false);
+    const [pseudo, setPseudo] = useState(''); // ✅ État pour le pseudo
+    const [step, setStep] = useState(1); // 1 = Choix Faction, 2 = Choix Pseudo
 
-    const handleChoose = async (faction) => {
+    const [selectedFaction, setSelectedFaction] = useState(null);
+
+    // Étape 1 : Choisir la Faction
+    const handleFactionSelect = (faction) => {
+        setSelectedFaction(faction);
+        setStep(2); // On passe au pseudo
+    };
+
+    // Étape 2 : Valider Création
+    const handleCreate = async (e) => {
+        e.preventDefault();
         if (loading) return;
+        if (!pseudo || pseudo.length < 3) {
+            alert("Le pseudo doit faire au moins 3 caractères !");
+            return;
+        }
+
         setLoading(true);
         try {
-            await api.post('/game/faction/choose', { userId, faction });
-            // On informe le parent que c'est bon, pour qu'il recharge les données du joueur
-            onSelect(); 
-            // Petit reload pour être sûr que tout s'affiche bien (couleurs, etc)
+            // ✅ APPEL DE LA NOUVELLE ROUTE DE CRÉATION
+            await api.post('/game/create', { 
+                pseudo: pseudo, 
+                // factionId: ... (Si ton backend gère les IDs de faction, sinon on verra plus tard)
+                // Pour l'instant, on envoie juste le pseudo car ton backend 'createPlayer' ne prend pas encore la faction en compte dans le create()
+                // Mais l'important est de créer le joueur !
+            });
+            
+            // Si la création réussit, on met à jour la faction (optionnel si le create ne le fait pas)
+            // await api.post('/game/faction/choose', { userId, faction: selectedFaction }); 
+
+            onSelect(); // On informe le parent
             window.location.reload();
         } catch (e) {
-            alert("Erreur lors du choix : " + e.message);
+            alert("Erreur : " + (e.response?.data?.message || e.message));
             setLoading(false);
         }
     };
@@ -49,6 +74,52 @@ const FactionSelector = ({ onSelect, userId }) => {
         }
     ];
 
+    // RENDER ÉTAPE 2 : PSEUDO
+    if (step === 2) {
+        return (
+            <div className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-sm flex flex-col items-center justify-center p-4 animate-fadeIn">
+                <div className="bg-slate-900 p-8 rounded-2xl border border-slate-700 shadow-2xl max-w-md w-full text-center">
+                    <h2 className="text-3xl font-black text-white font-pirata mb-6 tracking-widest">IDENTITÉ</h2>
+                    
+                    <p className="text-slate-400 text-sm mb-6">
+                        Vous avez choisi la voie des <span className="font-bold text-yellow-500">{selectedFaction}s</span>.
+                        <br/>Quel nom restera dans l'histoire ?
+                    </p>
+
+                    <form onSubmit={handleCreate}>
+                        <input 
+                            type="text" 
+                            value={pseudo}
+                            onChange={(e) => setPseudo(e.target.value)}
+                            placeholder="Votre Pseudo..."
+                            className="w-full bg-black/50 border border-slate-600 rounded-xl px-4 py-3 text-white font-bold text-center text-xl focus:border-yellow-500 outline-none mb-6 placeholder:text-slate-700"
+                            autoFocus
+                            maxLength={15}
+                        />
+
+                        <div className="flex gap-4">
+                            <button 
+                                type="button" 
+                                onClick={() => setStep(1)} 
+                                className="flex-1 py-3 rounded-xl font-bold bg-slate-800 text-slate-400 hover:bg-slate-700 transition"
+                            >
+                                RETOUR
+                            </button>
+                            <button 
+                                type="submit" 
+                                disabled={loading}
+                                className={`flex-1 py-3 rounded-xl font-bold text-black transition transform active:scale-95 ${loading ? 'bg-slate-600 cursor-not-allowed' : 'bg-yellow-500 hover:bg-yellow-400 shadow-lg shadow-yellow-500/20'}`}
+                            >
+                                {loading ? 'CRÉATION...' : 'COMMENCER'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        );
+    }
+
+    // RENDER ÉTAPE 1 : FACTIONS
     return (
         <div className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-sm flex flex-col items-center justify-center p-4 animate-fadeIn">
             <div className="text-center mb-8">
@@ -64,7 +135,7 @@ const FactionSelector = ({ onSelect, userId }) => {
                 {factions.map((f) => (
                     <button
                         key={f.id}
-                        onClick={() => handleChoose(f.id)}
+                        onClick={() => handleFactionSelect(f.id)}
                         disabled={loading}
                         className={`group relative h-80 rounded-2xl border-2 ${f.border} bg-gradient-to-br ${f.color} p-6 flex flex-col items-center text-center transition-all duration-300 hover:scale-105 hover:shadow-[0_0_30px_rgba(0,0,0,0.5)] overflow-hidden`}
                     >
