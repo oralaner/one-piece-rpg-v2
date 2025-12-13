@@ -390,6 +390,7 @@ export default function Home() {
                         // 🔒 Vérification si l'onglet est bloqué
                         const locked = isTabLocked(btn.id);
 
+                        
                         return (
                             <button 
                                 key={btn.id} 
