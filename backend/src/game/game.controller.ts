@@ -47,37 +47,10 @@ export class GameController {
     return this.gameService.equipTitle(body.userId, body.titre);
   }
 
-  // 👇 NOUVELLE ROUTE CRUCIALE : CRÉATION DU PERSONNAGE
-  @Post('create')
-  async createCharacter(
-    @User() userId: string, 
-    @Body() body: { pseudo: string; faction: string }
-  ) {
-      console.log(`📝 Demande de création : ${body.pseudo} (${body.faction})`);
-      
-      if (!body.pseudo || body.pseudo.length < 3) {
-          throw new BadRequestException("Le pseudo doit faire au moins 3 caractères.");
-      }
-
-      // Appel au service pour créer le joueur proprement
-      return this.gameService.createPlayer(userId, body.pseudo, body.faction);
-  }
-  // 👆 FIN DE L'AJOUT
-
   @UseGuards(AuthGuard('jwt'))
   @Get('player/me')
   async getMyProfile(@User() userId: string) {
-    if (!userId) {
-        console.error("❌ [CONTROLLER] ERREUR : L'ID est undefined ou null !");
-    }
-
-    const result = await this.gameService.getPlayerData(userId);
-    
-    if (!result) {
-        console.error("⚠️ [CONTROLLER] Service a renvoyé null/undefined");
-    }
-
-    return result;
+    return this.gameService.getPlayerData(userId);
   }
   
   @Post('activity')

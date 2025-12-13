@@ -437,6 +437,171 @@ async getDailyQuests(userId: string) {
       
       return { success: true, message: `Récompense : +${quest.xp_reward} XP, +${quest.berrys_reward} ฿` };
   }
+
+  async getPlayerData(userId: string) {
+    const now = new Date();
+
+    // 1. Recherche du joueur
+    let [joueur, allNavires] = await Promise.all([
+        this.prisma.joueurs.findUnique({
+            where: { id: userId },
+            include: {
+                inventaire: { include: { objets: true } },
+                equipage: true,
+                joueur_titres: { include: { titres_ref: true } }
+            }
+        }),
+        this.prisma.navires_ref.findMany({ 
+            include: { cout_items: { include: { objet: true } } }
+        })
+    ]);
+
+    // 2. CRÉATION AUTOMATIQUE (RESTAURÉE)
+    if (!joueur) {
+        console.log(`⚠️ Joueur ${userId} introuvable. CRÉATION AUTO...`);
+        
+        try {
+            const newJoueur = await this.prisma.joueurs.create({
+                data: {
+                    id: userId,
+                    pseudo: `Pirate_${userId.substring(0, 5)}`,
+                    pv_actuel: 100,
+                    pv_max_base: 100,
+                    last_pv_update: new Date(),
+                    energie_actuelle: 10,
+                    last_energie_update: new Date(),
+                    niveau: 1,
+                    berrys: 100,
+                    xp: 0,
+                    points_carac: 0,
+                    force: 1,
+                    defense: 1,
+                    vitalite: 1,
+                    sagesse: 1,
+                    chance: 1,
+                    agilite: 1,
+                    intelligence: 1,
+                }
+            });
+
+            console.log("✨ [SUCCÈS] Joueur créé !");
+            joueur = newJoueur as any; // On force le type pour dire "c'est bon"
+
+        } catch (error) {
+            console.error("❌ CRASH CRÉATION JOUEUR", error);
+            throw new InternalServerErrorException("Erreur création: " + error.message);
+        }
+    }
+
+    // 🛑 LE GARDE-FOU SUPPRÊME :
+    // Cette ligne rassure TypeScript. Si on arrive ici, joueur EXISTE forcément.
+    if (!joueur) throw new InternalServerErrorException("Erreur critique: Joueur introuvable.");
+
+    // --- RECONSTRUCTION EQUIPEMENT (Inchangé) ---
+    const equipementMap: any = { arme: null, tete: null, corps: null, bottes: null, bague: null, collier: null, navire: null };
+    
+    // Le "?" permet d'éviter le crash si l'inventaire n'est pas chargé (cas création)
+    if (joueur.inventaire) {
+        joueur.inventaire.forEach(invItem => {
+            if (invItem.est_equipe && invItem.objets) {
+                const type = invItem.objets.type_equipement;
+                if (type === 'MAIN_DROITE') equipementMap.arme = invItem;
+                else if (type === 'TETE') equipementMap.tete = invItem;
+                else if (type === 'CORPS') equipementMap.corps = invItem;
+                else if (type === 'PIEDS') equipementMap.bottes = invItem;
+                else if (type === 'ACCESSOIRE_1') equipementMap.bague = invItem;
+                else if (type === 'ACCESSOIRE_2') equipementMap.collier = invItem;
+                else if (type === 'NAVIRE' || invItem.objets.categorie === 'Navire') equipementMap.navire = invItem;
+            }
+        });
+    }
+
+    // --- CALCULS STATS & REGENERATION (Inchangé) ---
+    const stats = this.calculatePlayerStats(joueur);
+    
+    const lastPvUpdate = joueur.last_pv_update ? new Date(joueur.last_pv_update) : now;
+    const hoursElapsedPv = Math.floor((now.getTime() - lastPvUpdate.getTime()) / 3600000);
+    let virtualPv = joueur.pv_actuel ?? 0;
+    
+    if (hoursElapsedPv >= 1) {
+        const healAmount = hoursElapsedPv * 10;
+        virtualPv = Math.min((joueur.pv_actuel ?? 0) + healAmount, stats.pv_max_total);
+    }
+
+    const MAX_ENERGIE = 10;
+    const REGEN_TIME_MS = 3600000;
+    const lastEnergieUpdate = joueur.last_energie_update ? new Date(joueur.last_energie_update) : now;
+    const currentStoredEnergie = joueur.energie_actuelle ?? MAX_ENERGIE;
+    
+    let virtualEnergie = currentStoredEnergie;
+    let timeUntilNextRegenMs = 0;
+
+    if (currentStoredEnergie < MAX_ENERGIE) {
+        const msElapsed = now.getTime() - lastEnergieUpdate.getTime();
+        const energyGained = Math.floor(msElapsed / REGEN_TIME_MS);
+        
+        virtualEnergie = Math.min(currentStoredEnergie + energyGained, MAX_ENERGIE);
+        
+        const msUsedForGain = energyGained * REGEN_TIME_MS;
+        const msRestant = msElapsed - msUsedForGain;
+        timeUntilNextRegenMs = Math.max(0, REGEN_TIME_MS - msRestant);
+        
+        if (virtualEnergie >= MAX_ENERGIE) timeUntilNextRegenMs = 0;
+    }
+
+    // --- INFO PROCHAIN NAVIRE (Inchangé) ---
+    let nextNavireData: any = null;
+    let niveauActuel = 1;
+    
+    if (equipementMap.navire) {
+        const currentRef = allNavires.find(n => n.nom === equipementMap.navire.objets.nom);
+        if (currentRef) niveauActuel = currentRef.niveau;
+    }
+
+    const nextShipRef = allNavires.find(n => n.niveau === niveauActuel + 1);
+
+    if (nextShipRef) {
+        nextNavireData = {
+            niveau: nextShipRef.niveau,
+            nom: nextShipRef.nom,
+            description: nextShipRef.description,
+            cout_berrys: Number(nextShipRef.prix_berrys),
+            image_url: nextShipRef.image_url,
+            listeMateriaux: nextShipRef.cout_items.map(cout => ({
+                id: cout.objet.id,
+                nom: cout.objet.nom,
+                image_url: cout.objet.image_url,
+                qte_requise: cout.quantite
+            }))
+        };
+    }
+
+    return {
+        ...joueur,
+        pv_actuel: virtualPv,
+        energie_actuelle: virtualEnergie,
+        statsTotales: stats,
+        max_energie: MAX_ENERGIE,
+        next_energie_in_ms: timeUntilNextRegenMs,
+        equipement: equipementMap,
+        nextNavire: nextNavireData
+    };
+  }
+
+  async chooseFaction(userId: string, faction: string) {
+    const validFactions = ['Pirate', 'Marine', 'Révolutionnaire'];
+    if (!validFactions.includes(faction)) {
+        throw new BadRequestException("Faction invalide.");
+    }
+
+    // Ici on update juste, le joueur a déjà été créé par getPlayerData
+    await this.prisma.joueurs.update({
+        where: { id: userId },
+        data: { faction: faction }
+    });
+
+    return { success: true, message: `Vous avez rejoint les ${faction}s !` };
+  }
   // ====================================================================
   // 🎁 FONCTION PRINCIPALE : OUVRIR COFFRE
   // ====================================================================
@@ -918,8 +1083,6 @@ async sellItem(dto: SellItemDto) {
             });
         }
 
-        // 2. Récupération des données (Attaquant + Défenseur)
-        // On utilise getPlayerData pour avoir les stats à jour (Régénération incluse)
         const attaquant: any = await this.getPlayerData(dto.userId);
         const defenseur = await this.prisma.joueurs.findUnique({ where: { id: dto.targetId } });
 
@@ -2797,119 +2960,7 @@ async createPlayer(userId: string, pseudo: string, faction: string) {
 
     return newJoueur;
   }
-async getPlayerData(userId: string) {
-    const now = new Date();
 
-    // 1. Recherche du joueur
-    const [joueur, allNavires] = await Promise.all([
-        this.prisma.joueurs.findUnique({
-            where: { id: userId },
-            include: {
-                inventaire: { include: { objets: true } },
-                equipage: true,
-                joueur_titres: { include: { titres_ref: true } }
-            }
-        }),
-        this.prisma.navires_ref.findMany({ 
-            include: { cout_items: { include: { objet: true } } }
-        })
-    ]);
-
-    // 2. STOP CRÉATION AUTO : Si le joueur n'existe pas, on renvoie une 404
-    // CORRECTION ERREUR 3 : NotFoundException est maintenant importé
-    if (!joueur) {
-        throw new NotFoundException("Joueur introuvable. Veuillez créer un personnage.");
-    }
-
-    // --- RECONSTRUCTION EQUIPEMENT ---
-    const equipementMap: any = { arme: null, tete: null, corps: null, bottes: null, bague: null, collier: null, navire: null };
-    
-    if (joueur.inventaire) {
-        joueur.inventaire.forEach(invItem => {
-            if (invItem.est_equipe && invItem.objets) {
-                const type = invItem.objets.type_equipement;
-                if (type === 'MAIN_DROITE') equipementMap.arme = invItem;
-                else if (type === 'TETE') equipementMap.tete = invItem;
-                else if (type === 'CORPS') equipementMap.corps = invItem;
-                else if (type === 'PIEDS') equipementMap.bottes = invItem;
-                else if (type === 'ACCESSOIRE_1') equipementMap.bague = invItem;
-                else if (type === 'ACCESSOIRE_2') equipementMap.collier = invItem;
-                else if (type === 'NAVIRE' || invItem.objets.categorie === 'Navire') equipementMap.navire = invItem;
-            }
-        });
-    }
-
-    // --- CALCULS STATS & REGENERATION ---
-    const stats = this.calculatePlayerStats(joueur);
-    
-    const lastPvUpdate = joueur.last_pv_update ? new Date(joueur.last_pv_update) : now;
-    const hoursElapsedPv = Math.floor((now.getTime() - lastPvUpdate.getTime()) / 3600000);
-    let virtualPv = joueur.pv_actuel ?? 0;
-    
-    if (hoursElapsedPv >= 1) {
-        const healAmount = hoursElapsedPv * 10;
-        virtualPv = Math.min((joueur.pv_actuel ?? 0) + healAmount, stats.pv_max_total);
-    }
-
-    const MAX_ENERGIE = 10;
-    const REGEN_TIME_MS = 3600000;
-    const lastEnergieUpdate = joueur.last_energie_update ? new Date(joueur.last_energie_update) : now;
-    const currentStoredEnergie = joueur.energie_actuelle ?? MAX_ENERGIE;
-    
-    let virtualEnergie = currentStoredEnergie;
-    let timeUntilNextRegenMs = 0;
-
-    if (currentStoredEnergie < MAX_ENERGIE) {
-        const msElapsed = now.getTime() - lastEnergieUpdate.getTime();
-        const energyGained = Math.floor(msElapsed / REGEN_TIME_MS);
-        
-        virtualEnergie = Math.min(currentStoredEnergie + energyGained, MAX_ENERGIE);
-        
-        const msUsedForGain = energyGained * REGEN_TIME_MS;
-        const msRestant = msElapsed - msUsedForGain;
-        timeUntilNextRegenMs = Math.max(0, REGEN_TIME_MS - msRestant);
-        
-        if (virtualEnergie >= MAX_ENERGIE) timeUntilNextRegenMs = 0;
-    }
-
-    // --- INFO PROCHAIN NAVIRE ---
-    let nextNavireData: any = null;
-    let niveauActuel = 1;
-    
-    if (equipementMap.navire) {
-        const currentRef = allNavires.find(n => n.nom === equipementMap.navire.objets.nom);
-        if (currentRef) niveauActuel = currentRef.niveau;
-    }
-
-    const nextShipRef = allNavires.find(n => n.niveau === niveauActuel + 1);
-
-    if (nextShipRef) {
-        nextNavireData = {
-            niveau: nextShipRef.niveau,
-            nom: nextShipRef.nom,
-            description: nextShipRef.description,
-            cout_berrys: Number(nextShipRef.prix_berrys),
-            image_url: nextShipRef.image_url,
-            listeMateriaux: nextShipRef.cout_items.map(cout => ({
-                id: cout.objet.id,
-                nom: cout.objet.nom,
-                image_url: cout.objet.image_url,
-                qte_requise: cout.quantite
-            }))
-        };
-    }
-
-    return {
-        ...joueur,
-        pv_actuel: virtualPv,
-        energie_actuelle: virtualEnergie,
-        statsTotales: stats,
-        max_energie: MAX_ENERGIE,
-        next_energie_in_ms: timeUntilNextRegenMs,
-        equipement: equipementMap,
-        nextNavire: nextNavireData
-    };
-  }
   // --- 9. ACTIVITÉ / EXPLORATION ---
   async doActivity(userId: string) {
     const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId } });
@@ -3466,25 +3517,7 @@ async unlockTitle(userId: string, nomTitre: string) {
     };
   }
 
-// DANS backend/src/game/game.service.ts
-async chooseFaction(userId: string, faction: string) {
-    const validFactions = ['Pirate', 'Marine', 'Révolutionnaire'];
-    if (!validFactions.includes(faction)) {
-        throw new BadRequestException("Faction invalide.");
-    }
 
-    const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId } });
-    if (!joueur) {
-        throw new BadRequestException("Vous avez déjà choisi votre voie !");
-    }
-
-    await this.prisma.joueurs.update({
-        where: { id: userId },
-        data: { faction: faction }
-    });
-
-    return { success: true, message: `Vous avez rejoint les ${faction}s !` };
-  }
 
 // ====================================================================
   // 🏆 SYSTÈME DE SUCCÈS (TITRES)
@@ -3827,10 +3860,7 @@ async chooseFaction(userId: string, faction: string) {
 
     // Bonus : Soin complet + Énergie max si Level Up !
     if (leveledUp) {
-        // On calcule les PV Max théoriques pour le soin
-        // (Formule approximative ici, ou on remet juste pv_max_base + bonus vitalité si on l'a)
-        // Pour faire simple, on met une grosse valeur, le clamp se fera au prochain getPlayerData ou on laisse le max
-        // Mieux : On ne touche pas aux PV actuels pour ne pas compliquer la transaction, ou on remet full energie.
+
         updateData.energie_actuelle = 10; 
     }
 
