@@ -1,9 +1,9 @@
-import { Controller, Post, Body, Get, Param, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, UseGuards, ParseUUIDPipe, BadRequestException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { User } from '../auth/user.decorator'; // Ton nouveau décorateur
+import { User } from '../auth/user.decorator';
 import { GameService } from './game.service';
 
-// DTOs imports (je garde les tiens)
+// DTOs imports
 import { InvestStatDto } from './invest-stat.dto';
 import { BuyItemDto } from './buy-item.dto';
 import { EquipItemDto } from './equip-item.dto';
@@ -24,36 +24,56 @@ import { JoinCrewDto, RecruitDto, KickDto, } from './crew-manage.dto';
 import { UpdateCrewDto } from './crew-manage.dto';
 import { GameGateway } from './game.gateway';
 import { UseItemDto } from './use-item.dto';
-import { OpenChestDto } from './crew-manage.dto';
+import { OpenChestDto } from './crew-manage.dto'; // Vérifie que le chemin est bon, sinon laisse tel quel
 import { StoryService } from './story.service';
 
 class UserIdDto { userId: string; }
+
 @Controller('game')
 export class GameController {
-  constructor(private readonly gameService: GameService, private readonly gameGateway: GameGateway,private readonly storyService: StoryService ) {}
+  constructor(
+    private readonly gameService: GameService, 
+    private readonly gameGateway: GameGateway,
+    private readonly storyService: StoryService 
+  ) {}
 
   // -----------------------------------------------------
   // 🛡️ ROUTES SÉCURISÉES (Nécessitent un Token)
   // -----------------------------------------------------
-// 👑 ÉQUIPER UN TITRE
+
+  // 👑 ÉQUIPER UN TITRE
   @Post('titles/equip')
   async equipTitle(@Body() body: { userId: string, titre: string | null }) {
     return this.gameService.equipTitle(body.userId, body.titre);
   }
+
+  // 👇 NOUVELLE ROUTE CRUCIALE : CRÉATION DU PERSONNAGE
+  @Post('create')
+  async createCharacter(
+    @User() userId: string, 
+    @Body() body: { pseudo: string; faction: string }
+  ) {
+      console.log(`📝 Demande de création : ${body.pseudo} (${body.faction})`);
+      
+      if (!body.pseudo || body.pseudo.length < 3) {
+          throw new BadRequestException("Le pseudo doit faire au moins 3 caractères.");
+      }
+
+      // Appel au service pour créer le joueur proprement
+      return this.gameService.createPlayer(userId, body.pseudo, body.faction);
+  }
+  // 👆 FIN DE L'AJOUT
+
   @UseGuards(AuthGuard('jwt'))
   @Get('player/me')
   async getMyProfile(@User() userId: string) {
-    // 👇 LOGS DE DÉBOGAGE
-
     if (!userId) {
         console.error("❌ [CONTROLLER] ERREUR : L'ID est undefined ou null !");
     }
 
     const result = await this.gameService.getPlayerData(userId);
     
-    // On loggue le résultat avant de l'envoyer
-    if (result) {
-    } else {
+    if (!result) {
         console.error("⚠️ [CONTROLLER] Service a renvoyé null/undefined");
     }
 
@@ -66,22 +86,16 @@ export class GameController {
     return this.gameService.doActivity(userId);
   }
   
-@Post('stats/invest')
+  @Post('stats/invest')
   async investStat(@Body() body: { userId: string, stat: string }) {
-    // 👇 AJOUT DE 'as any' pour calmer TypeScript
-    // Le service s'occupe de vérifier si la string est valide ou non.
     return this.gameService.investStat(body as any);
   }
 
   @Post('buy')
   async buyItem(@Body() body: { userId: string, itemId: number, quantity: number }) {
-    // 💡 ADAPTATION : Votre service attend un objet { userId, objetId, quantite }
-    // Mais le frontend envoie { userId, itemId, quantity }
-    // On fait donc le mapping ici pour que ça colle parfaitement.
-    
     return this.gameService.buyItem({
       userId: body.userId,
-      objetId: Number(body.itemId), // Conversion explicite pour être sûr
+      objetId: Number(body.itemId),
       quantite: Number(body.quantity || 1)
     });
   }
@@ -149,7 +163,6 @@ export class GameController {
   @Post('travel/collect')
   @UseGuards(AuthGuard('jwt'))
   recolter(@User() userId: string) {
-    // Ici le body n'est plus utile pour l'ID
     return this.gameService.collectExpedition(userId);
   }
 
@@ -162,16 +175,14 @@ export class GameController {
     return this.gameService.buySkill(dto);
   }
 
-@Post('skill/equip')
+  @Post('skill/equip')
   @UseGuards(AuthGuard('jwt'))
   async equipSkill(@User() userId: string, @Body() body: { skillId: number }) {
-    // On appelle la nouvelle fonction 'equipSkill' du service
     return this.gameService.equipSkill({ 
         userId: userId, 
         skillId: body.skillId 
     });
   }
-
 
   // --- MARCHÉ ---
 
@@ -191,15 +202,8 @@ export class GameController {
 
   // --- ÉQUIPAGE (CREW) ---
 
-  // NOTE: getCrewInfo utilise Param, c'est de la lecture publique, pas besoin de sécuriser "userId"
-  // Sauf si tu veux empêcher de voir l'équipage des autres, mais c'est généralement public.
-
-  
   @Get('crew/:userId')
-  getCrewInfo(
-    // 💡 CORRECTION : Ajout de ParseUUIDPipe pour valider le format UUID de l'URL
-    @Param('userId', ParseUUIDPipe) userId: string
-  ) {
+  getCrewInfo(@Param('userId', ParseUUIDPipe) userId: string) {
     return this.gameService.getCrewInfo(userId);
   }
 
@@ -233,7 +237,7 @@ export class GameController {
   @Post('crew/recruit')
   @UseGuards(AuthGuard('jwt'))
   gererRecrutement(@User() userId: string, @Body() dto: RecruitDto) {
-    dto.userId = userId; // C'est l'ID du chef qui décide
+    dto.userId = userId; 
     return this.gameService.manageApplication(dto);
   }
 
@@ -259,16 +263,11 @@ export class GameController {
     return this.gameService.startRaidPrep(userId, body.type);
   }
 
-  
-@Post('crew/raid/join')
+  @Post('crew/raid/join')
   async joinRaid(@Body() body: { userId: string }) {
-    // 1. On rejoint via le service
     const result = await this.gameService.joinRaid(body.userId);
-    
-    // 2. On récupère l'ID équipage via le service (PAS via this.prisma)
     const crewId = await this.gameService.getCrewIdFromUser(body.userId); 
     
-    // 3. On notifie via la Gateway
     if (crewId) {
         this.gameGateway.server.to(`EQUIPAGE_${crewId}`).emit('crewUpdate');
     }
@@ -278,7 +277,6 @@ export class GameController {
 
   @Post('crew/raid/check')
   checkRaid(@Body() body: { crewId: string }) {
-    // Public (ou protégé si tu veux)
     return this.gameService.checkRaidStatus(body.crewId);
   }
 
@@ -289,7 +287,6 @@ export class GameController {
   }
 
   // --- GET DATA (Lecture) ---
-  // Ces routes peuvent rester publiques ou être protégées si tu veux cacher le jeu aux non-connectés
 
   @Get('commerce')
   getCommerce() {
@@ -306,6 +303,7 @@ export class GameController {
   async getSkills(@User() userId: string) {
     return this.gameService.getSkillsData(userId);
   }
+
   @Get('leaderboard/:type')
   getLeaderboard(@Param('type') type: string) {
     return this.gameService.getLeaderboard(type);
@@ -334,24 +332,17 @@ export class GameController {
     return this.gameService.useItem(dto);
   }
   
-  @Get('arena/:filter') // filter sera 'PVE' ou 'PVP'
+  @Get('arena/:filter') 
   @UseGuards(AuthGuard('jwt'))
   getArena(@User() userId: string, @Param('filter') filter: string) {
-    // On s'assure que le filtre est valide
     const safeFilter = filter === 'PVP' ? 'PVP' : 'PVE';
     return this.gameService.getArenaOpponents(userId, safeFilter);
   }
 
-  // Ajoute l'import OpenChestDto
-
-  // DANS backend/src/game/game.controller.ts
   @Post('chest/open')
   @UseGuards(AuthGuard('jwt'))
   openChest(@User() userId: string, @Body() dto: OpenChestDto) {
-    // On assigne le userId au DTO (méthode existante)
     dto.userId = userId; 
-    
-    // 💥 On s'assure que le Service utilise ce DTO (voir correction service ci-dessous)
     return this.gameService.openChest(dto);
   }
   
@@ -359,7 +350,8 @@ export class GameController {
   getAllItems() {
     return this.gameService.getAllItems();
   }
-@Post('combat/flee')
+
+  @Post('combat/flee')
   @UseGuards(AuthGuard('jwt'))
   async fuirCombat(@User() userId: string, @Body() body: { combatId: string }) {
     return this.gameService.fleeCombat({ 
@@ -367,22 +359,20 @@ export class GameController {
         combatId: body.combatId 
     });
   }
-  // 13. ACTIVITÉ (EXPLORER)
+
   @Post('activity/click')
   @UseGuards(AuthGuard('jwt'))
   async clickActivite(@User() userId: string) {
-    // Le service attend un DTO avec userId
     return this.gameService.clickActivite({ userId });
   }
 
-  // 14. RÉCOLTE EXPÉDITION (VOYAGE TERMINÉ)
   @Post('expedition/collect')
   @UseGuards(AuthGuard('jwt'))
   async recolterExpedition(@User() userId: string) {
-    // Le service attend un DTO avec userId
     return this.gameService.recolterExpedition({ userId });
   }
 
+  // Note: Cette route est probablement redondante avec /create, mais on la garde pour compatibilité si besoin
   @Post('faction/choose')
   @UseGuards(AuthGuard('jwt'))
   async chooseFaction(@User() userId: string, @Body() body: { faction: string }) {
@@ -400,39 +390,33 @@ export class GameController {
     return this.gameService.getMeteo();
   }
 
-  // 1. Récupérer les quêtes
   @Get('quests/:userId')
   async getQuests(@Param('userId') userId: string) {
     return this.gameService.getDailyQuests(userId);
   }
 
-  // 2. Réclamer une récompense
   @Post('quests/claim')
   async claimQuest(@Body() body: { userId: string, questId: string }) {
     return this.gameService.claimQuestReward(body.userId, body.questId);
   }
 
-  // HISTOIRE : Progression
   @Get('story/progress/:userId')
   async getStoryProgress(@Param('userId') userId: string) {
     return this.storyService.getCurrentProgress(userId);
   }
 
-  // HISTOIRE : Valider étape (Click bouton)
   @Post('story/validate')
   async validateStoryStep(@Body() body: { userId: string }) {
     return this.storyService.validateStep(body.userId);
   }
 
-@Get('destinations/:userId')
+  @Get('destinations/:userId')
   async getDestinations(@Param('userId') userId: string) {
-    // 👇 ON CHANGE ICI : on appelle storyService au lieu de gameService
     return this.storyService.getDestinationsWithStatus(userId);
   }
 
-@Post('combat/start-story')
+  @Post('combat/start-story')
   async startStoryFight(@Body() body: { userId: string, targetName: string }) {
-    // 👇 On délègue tout au service, plus de logique ici !
     return this.gameService.startStoryFight(body.userId, body.targetName);
   }
 
