@@ -7,27 +7,32 @@ export const usePlayerData = (userId) => {
         queryKey: ['playerData', userId],
         
         queryFn: async () => {
-            console.log("🔄 Fetching player data for:", userId);
-            try {
-                const res = await api.get('/game/player/me');
-                console.log("✅ Data received:", res.data?.pseudo);
-                return res.data;
-            } catch (err) {
-                console.error("❌ Error fetching player:", err.response?.status);
-                throw err;
+            // Timestamp anti-cache
+            const t = new Date().getTime();
+            console.log(`📡 Appel API /player/me (t=${t})...`);
+            
+            const res = await api.get(`/game/player/me?t=${t}`);
+            
+            // 👇 LOG COMPLET DE LA RÉPONSE
+            console.log("📦 Réponse BRUTE API:", res); 
+
+            // Sécurité : parfois axios met les données dans res.data, parfois res.data.data
+            const playerData = res.data;
+
+            if (!playerData) {
+                console.error("❌ ERREUR: Données vides reçues du backend !");
+                return null;
             }
+
+            console.log("✅ Données extraites:", playerData);
+            return playerData;
         },
         
         enabled: !!userId,
-        retry: 1, // On essaie 1 fois en cas d'échec réseau, mais pas en boucle
-        staleTime: 0, // Toujours frais
+        retry: false, // On ne réessaie pas pour éviter les boucles en dev
+        staleTime: 0,
         refetchOnWindowFocus: true
     });
 
-    return { 
-        data, 
-        isLoading, 
-        error, 
-        refetch
-    };
+    return { data, isLoading, error, refetch };
 };

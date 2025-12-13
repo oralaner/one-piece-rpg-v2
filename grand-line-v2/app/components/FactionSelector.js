@@ -1,120 +1,55 @@
 import React, { useState } from 'react';
 import { api } from '../utils/api';
-import { useQueryClient } from '@tanstack/react-query';
 
 const FactionSelector = ({ onSelect, userId }) => {
     const [loading, setLoading] = useState(false);
-    const queryClient = useQueryClient();
 
     const handleChoose = async (faction) => {
+        console.log("🔵 FACTION SELECTOR V5 - Click détecté sur", faction);
+        
         if (loading) return;
         setLoading(true);
-        
+
         try {
-            console.log("1. Envoi choix faction:", faction);
-            
-            // 1. Appel API pour sauvegarder en BDD
+            // 1. Appel API
+            console.log("📡 Envoi requête backend...");
             await api.post('/game/faction/choose', { userId, faction });
-            
-            console.log("2. Succès API. Injection immédiate du joueur...");
+            console.log("✅ Réponse backend OK.");
 
-            // ⚡⚡⚡ LA SOLUTION ULTIME ⚡⚡⚡
-            // On injecte manuellement un "Faux Joueur" complet dans le cache.
-            // Comme ça, Home.js voit un joueur IMMÉDIATEMENT et affiche le jeu.
-            // React Query remplacera ça par les vraies données du serveur 1 seconde plus tard.
-            
-            queryClient.setQueryData(['playerData', userId], (old) => {
-                return {
-                    id: userId,
-                    pseudo: "Pirate", // Sera remplacé par le vrai fetch
-                    faction: faction, // ✅ Ce qui compte c'est ça !
-                    
-                    // On met des valeurs par défaut pour éviter que Home.js ne plante
-                    niveau: 1,
-                    xp: 0,
-                    berrys: 100,
-                    pv_actuel: 100,
-                    pv_max_base: 100,
-                    energie_actuelle: 10,
-                    inventaire: [],
-                    equipement: { arme: null, tete: null, corps: null, bottes: null },
-                    statsTotales: { force: 1, vitalite: 1, pv_max_total: 100 },
-                    
-                    // On garde les vieilles données si elles existent (peu probable ici)
-                    ...(old || {})
-                };
-            });
+            // 2. Message utilisateur (pour être sûr que ça ne va pas trop vite)
+            alert(`Bienvenue chez les ${faction}s ! La page va se recharger.`);
 
-            // On invalide pour être sûr de récupérer les vraies données après
-            await queryClient.invalidateQueries(['playerData']);
-
-            console.log("3. Cache mis à jour. Passage au jeu !");
-
-            if (onSelect) onSelect(); 
+            // 3. RELOAD FORCÉ "HARD"
+            // On utilise window.location.href pour forcer le navigateur à tout redemander
+            window.location.href = window.location.href;
 
         } catch (e) {
-            console.error(e);
-            alert("Erreur lors du choix : " + (e.response?.data?.message || e.message));
+            console.error("❌ Erreur:", e);
+            alert("Erreur : " + (e.response?.data?.message || e.message));
             setLoading(false);
         }
     };
 
     const factions = [
-        {
-            id: 'Pirate',
-            icon: '☠️',
-            title: 'Pirate',
-            desc: 'La liberté avant tout. Cherchez le One Piece et amassez des richesses.',
-            color: 'from-red-900 to-red-600',
-            border: 'border-red-500',
-            text: 'text-red-100'
-        },
-        {
-            id: 'Marine',
-            icon: '⚖️',
-            title: 'Marine',
-            desc: 'La Justice absolue. Maintenez l\'ordre et chassez les criminels.',
-            color: 'from-cyan-900 to-cyan-600',
-            border: 'border-cyan-400',
-            text: 'text-cyan-100'
-        },
-        {
-            id: 'Révolutionnaire',
-            icon: '🔥',
-            title: 'Révolutionnaire',
-            desc: 'Renversez le monde. Combattez le Gouvernement Mondial dans l\'ombre.',
-            color: 'from-emerald-900 to-emerald-600',
-            border: 'border-emerald-500',
-            text: 'text-emerald-100'
-        }
+        { id: 'Pirate', icon: '☠️', title: 'Pirate', desc: 'Liberté et Richesse', color: 'from-red-900 to-red-600', border: 'border-red-500', text: 'text-red-100' },
+        { id: 'Marine', icon: '⚖️', title: 'Marine', desc: 'Ordre et Justice', color: 'from-cyan-900 to-cyan-600', border: 'border-cyan-400', text: 'text-cyan-100' },
+        { id: 'Révolutionnaire', icon: '🔥', title: 'Révolutionnaire', desc: 'Changement et Combat', color: 'from-emerald-900 to-emerald-600', border: 'border-emerald-500', text: 'text-emerald-100' }
     ];
 
     return (
         <div className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-sm flex flex-col items-center justify-center p-4 animate-fadeIn">
-            <div className="text-center mb-8">
-                <h1 className="text-4xl md:text-5xl font-black text-yellow-500 font-pirata tracking-widest drop-shadow-lg mb-2">
-                    CHOISISSEZ VOTRE VOIE
-                </h1>
-                <p className="text-slate-400 text-sm md:text-base uppercase tracking-wider">
-                    Cette décision est définitive et façonnera votre destin.
-                </p>
-            </div>
-
+            <h1 className="text-4xl text-yellow-500 font-pirata mb-8">CHOISIS TA FACTION (V5)</h1>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl">
                 {factions.map((f) => (
                     <button
                         key={f.id}
                         onClick={() => handleChoose(f.id)}
                         disabled={loading}
-                        className={`group relative h-80 rounded-2xl border-2 ${f.border} bg-gradient-to-br ${f.color} p-6 flex flex-col items-center text-center transition-all duration-300 hover:scale-105 hover:shadow-[0_0_30px_rgba(0,0,0,0.5)] overflow-hidden`}
+                        className={`h-64 rounded-xl border-2 ${f.border} bg-gradient-to-br ${f.color} p-4 flex flex-col items-center justify-center hover:scale-105 transition-transform`}
                     >
-                        <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors"></div>
-                        <div className="text-6xl mb-4 group-hover:scale-110 transition-transform duration-300">{f.icon}</div>
-                        <h2 className={`text-2xl font-black uppercase tracking-widest mb-4 font-pirata ${f.text}`}>{f.title}</h2>
-                        <p className="text-white/80 text-sm leading-relaxed font-medium">{f.desc}</p>
-                        <div className="mt-auto opacity-0 group-hover:opacity-100 transition-opacity duration-300 translate-y-4 group-hover:translate-y-0">
-                            <span className="inline-block px-6 py-2 bg-white text-black font-bold uppercase text-xs tracking-widest rounded-full">Rejoindre</span>
-                        </div>
+                        <div className="text-6xl mb-4">{f.icon}</div>
+                        <h2 className={`text-2xl font-black ${f.text}`}>{f.title}</h2>
+                        <p className="text-white/80 text-sm mt-2">{f.desc}</p>
                     </button>
                 ))}
             </div>
