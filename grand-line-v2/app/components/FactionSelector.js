@@ -28,15 +28,10 @@ const FactionSelector = ({ onSelect, userId }) => {
             // ✅ APPEL DE LA NOUVELLE ROUTE DE CRÉATION
             await api.post('/game/create', { 
                 pseudo: pseudo, 
-                // factionId: ... (Si ton backend gère les IDs de faction, sinon on verra plus tard)
-                // Pour l'instant, on envoie juste le pseudo car ton backend 'createPlayer' ne prend pas encore la faction en compte dans le create()
-                // Mais l'important est de créer le joueur !
+                faction: selectedFaction 
             });
             
-            // Si la création réussit, on met à jour la faction (optionnel si le create ne le fait pas)
-            // await api.post('/game/faction/choose', { userId, faction: selectedFaction }); 
-
-            onSelect(); // On informe le parent
+            onSelect();
             window.location.reload();
         } catch (e) {
             alert("Erreur : " + (e.response?.data?.message || e.message));

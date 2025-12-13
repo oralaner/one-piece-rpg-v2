@@ -2755,28 +2755,28 @@ async getTravelData() {
      };
   }
 
-async createPlayer(userId: string, pseudo: string, factionId?: number) {
+async createPlayer(userId: string, pseudo: string, faction: string) {
     
-    // CORRECTION ERREUR 1 : On utilise findFirst car 'pseudo' n'est pas marqué @unique dans le schema
+    // 1. Vérif doublon pseudo
     const existingPseudo = await this.prisma.joueurs.findFirst({
-        where: { pseudo: pseudo }
+        where: { pseudo: { equals: pseudo, mode: 'insensitive' } } // Insensible à la casse
     });
     
     if (existingPseudo) {
         throw new BadRequestException("Ce pseudo est déjà pris, pirate !");
     }
 
-    // CORRECTION ERREUR 2 : Suppression de ile_id
+    // 2. Création
     const newJoueur = await this.prisma.joueurs.create({
         data: {
             id: userId,
             pseudo: pseudo,
-            // faction_id: factionId, // À décommenter plus tard si besoin
+            faction: faction || 'Pirate', // ✅ On enregistre la faction (défaut Pirate)
             
             // Stats de départ
             niveau: 1,
             xp: 0,
-            berrys: 100,
+            berrys: 1000, // Un petit cadeau de bienvenue
             pv_actuel: 100,
             pv_max_base: 100,
             last_pv_update: new Date(),
@@ -2792,8 +2792,6 @@ async createPlayer(userId: string, pseudo: string, factionId?: number) {
             chance: 1,
             agilite: 1,
             intelligence: 1
-            
-            // ❌ ile_id supprimé pour de bon !
         }
     });
 
