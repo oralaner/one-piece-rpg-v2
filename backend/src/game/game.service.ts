@@ -3474,13 +3474,14 @@ async unlockTitle(userId: string, nomTitre: string) {
   }
 
 // =================================================================
-  // 2. RÉCOLTE EXPÉDITION (CORRIGÉE : FETCH MANUEL)
-  // =================================================================
-  async recolterExpedition(dto: { userId: string }) {
+// 2. RÉCOLTE EXPÉDITION (CORRIGÉE : CHANCE BASÉE SUR LES STATS)
+// =================================================================
+async recolterExpedition(dto: { userId: string }) {
     // 1. Récupération du joueur (Sans inclure 'localisation' qui bug)
     const joueur = await this.prisma.joueurs.findUnique({ 
         where: { id: dto.userId },
-        include: { equip_corps: true } // On garde juste l'équipement
+        // IMPORTANT : On inclut l'inventaire pour que calculatePlayerStats fonctionne
+        include: { equip_corps: true, inventaire: { include: { objets: true } } } 
     });
 
     if (!joueur) throw new BadRequestException("Joueur introuvable.");
@@ -3489,7 +3490,6 @@ async unlockTitle(userId: string, nomTitre: string) {
     }
     
     // --- 2. RÉCUPÉRATION MANUELLE DE LA DESTINATION ---
-    // On utilise l'ID stocké dans le joueur pour trouver l'île
     let destination: any = null;
     if (joueur.localisation_id) {
         destination = await this.prisma.destinations.findUnique({
@@ -3497,28 +3497,39 @@ async unlockTitle(userId: string, nomTitre: string) {
         });
     }
 
-    // --- 3. CALCUL DE LA RÉUSSITE (Version Équilibrée) ---
-    const difficulty = destination?.niveau_requis || 10;
-    const playerLevel = joueur.niveau || 1;
+    // --- 3. CALCUL DE LA RÉUSSITE (Basé sur les Stats du Joueur) ---
+    
+    // a. Récupération des Stats Totales (Base + Equipement)
+    // ⚠️ NÉCESSITE que this.calculatePlayerStats(joueur) existe et fonctionne
+    const stats = this.calculatePlayerStats(joueur); 
+    
+    // b. Définir la Difficulté (Utilisation de 'difficulte' si elle existe, sinon niveau * 30)
+    const difficulteIle = destination?.difficulte || (destination?.niveau_requis * 30) || 30; 
+    
+    // c. Formule de Puissance Mixte (Doit être la même que le Frontend)
+    // On met en avant l'exploration physique (Force/Agilité)
+    const puissanceJoueur = (stats.force * 1.5) + (stats.agilite * 1.2) + (stats.intelligence * 1.0);
+    
+    // d. Calcul de la Chance (Pivot 50% à puissance égale)
+    let ratio = puissanceJoueur / Math.max(1, difficulteIle);
+    let chancePercent = Math.floor(ratio * 50); // Le ratio * 50 donne 50% à l'équilibre
+    
+    // e. Ajustement de base (pour donner un petit bonus au niveau)
+    chancePercent += Math.max(0, (joueur.niveau || 1) / 2);
 
-    // Formule : 50% de base + 3% par niveau d'écart
-    let baseChance = 50;
-    let levelDifference = playerLevel - difficulty;
-    let chancePercent = baseChance + (levelDifference * 3);
-
-    // Bornes : Min 10%, Max 100%
-    chancePercent = Math.min(100, Math.max(10, chancePercent));
+    // Bornes : Min 10%, Max 95%
+    chancePercent = Math.min(95, Math.max(10, chancePercent));
 
     // 🎲 TIRAGE AU SORT
     const roll = Math.random() * 100;
     const isSuccess = roll <= chancePercent;
 
-    console.log(`🎲 Expédition ${joueur.pseudo} (Niv ${playerLevel}) vs Île (Niv ${difficulty}) : ${chancePercent}% chance. Roll: ${roll.toFixed(1)} -> ${isSuccess ? "SUCCÈS" : "ÉCHEC"}`);
+    console.log(`🎲 Expédition ${joueur.pseudo} (Puissance ${puissanceJoueur.toFixed(0)}) vs Île (Diff ${difficulteIle}) : ${chancePercent}% chance. Roll: ${roll.toFixed(1)} -> ${isSuccess ? "SUCCÈS" : "ÉCHEC"}`);
 
     // --- CAS D'ÉCHEC ---
     if (!isSuccess) {
         // Gain de consolation (juste un peu d'XP, pas d'objets)
-        const xpConsolation = Math.floor(50 * Math.max(1, playerLevel / 2));
+        const xpConsolation = Math.floor(50 * Math.max(1, (joueur.niveau || 1) / 2));
         
         await this.prisma.joueurs.update({
             where: { id: dto.userId },
@@ -3535,12 +3546,13 @@ async unlockTitle(userId: string, nomTitre: string) {
             message: "L'expédition a échoué... Vos hommes sont revenus fatigués.",
             rewards: { xp: xpConsolation, berrys: 0, items: [] },
             leveledUp: false,
-            newLevel: playerLevel
+            newLevel: (joueur.niveau || 1)
         };
     }
 
     // --- CAS DE RÉUSSITE ---
     
+    const playerLevel = joueur.niveau || 1;
     // Logique loot table
     let lootTable = LOOT_VOYAGE_TABLES.LOW; 
     if (playerLevel > 10) lootTable = LOOT_VOYAGE_TABLES.MEDIUM; 
@@ -3564,7 +3576,7 @@ async unlockTitle(userId: string, nomTitre: string) {
 
         // Compléter updateData
         updateData.berrys = { increment: gainBerrys };
-        updateData.expedition_fin = null; // On libère le joueur
+        updateData.expedition_fin = null;
         updateData.nb_expeditions_reussies = { increment: 1 };
 
         // UPDATE JOUEUR
@@ -3600,7 +3612,7 @@ async unlockTitle(userId: string, nomTitre: string) {
         leveledUp: isLeveledUp,
         newLevel: currentNewLevel
     };
-  }
+}
 
 
 

@@ -22,26 +22,42 @@ const MapTab = ({ destinations, joueur, expeditionChrono, onTravel, onCollect, t
         mapRef.current.scrollTop = startPos.current.top - dy;
     };
 
-   // --- CALCUL CHANCE (Version Équilibrée "Risque & Récompense") ---
+   // --- CALCUL CHANCE (Basé sur les Stats Totales & Équipement) ---
     const getSuccessRate = (dest) => {
         if (!joueur) return 0;
 
-        // 1. Difficulté de l'île
-        const difficulty = dest.niveau_requis || (dest.id * 5); 
-        const playerLevel = joueur.niveau || 1;
-
-        // 2. Formule "Pivot 50%"
-        // À niveau égal, on a 50% de chance.
-        // Chaque niveau supplémentaire donne +3%.
-        // Chaque niveau en moins enlève 3%.
-        let baseChance = 50;
-        let levelDifference = playerLevel - difficulty;
+        // 1. Calcul de la PUISSANCE MOYENNE du joueur
+        // On suppose que joueur.statsTotales est un objet calculé qui contient les totaux (Base + Équipement)
+        // Si tu n'as pas de statsTotales, on prend les stats de base du joueur (pas idéal, mais sécurisé)
+        const stats = joueur.statsTotales || { 
+            force: joueur.force || 0, 
+            agilite: joueur.agilite || 0, 
+            intelligence: joueur.intelligence || 0 
+        };
         
-        let percent = baseChance + (levelDifference * 3);
+        // Formule de Puissance Mixte (pour une approche générale de l'exploration)
+        // On donne plus de poids à la Force et l'Agilité pour l'exploration physique.
+        const puissanceJoueur = (stats.force * 1.5) + (stats.agilite * 1.2) + (stats.intelligence * 1.0);
+        
+        // 2. Définir la DIFFICULTÉ de l'île
+        // On utilise la difficulté (qui devrait être élevée par les créateurs) ou le niveau * 30
+        const difficulteIle = dest.difficulte || (dest.niveau_requis * 30); 
 
-        // 3. Bornes (Min 10% - Max 100%)
-        // On laisse toujours une petite chance de réussir (10%) ou d'échouer (sauf si on écrase le niveau)
-        return Math.max(10, Math.min(100, percent));
+        // 3. Calcul de la Chance (Pivot 50% au niveau de difficulté/puissance égale)
+        // Ratio = Puissance Joueur / Difficulté de l'île
+        let ratio = puissanceJoueur / Math.max(1, difficulteIle);
+        
+        // On utilise un facteur de conversion plus faible (par exemple 20) pour ne pas atteindre 100% trop vite.
+        // On veut que ratio = 1 (Puissance égale) donne environ 50%
+        // Si ratio = 1, (1 * 50) = 50%
+        let percent = Math.floor(ratio * 50);
+
+        // Ajustement pour éviter les résultats trop bas (même un niveau 1 doit avoir une chance)
+        // Si percent est trop bas, on ajoute un ajustement basé sur le niveau (ex: Niveau * 1%)
+        percent += Math.max(0, joueur.niveau / 2); // Ajustement de base par niveau
+
+        // 4. Bornes (Min 10% - Max 95% pour garder un léger risque)
+        return Math.max(10, Math.min(95, percent));
     };
     // --- DONNÉES MÉTÉO SÉCURISÉES ---
     const currentMeteo = meteoData || { 
