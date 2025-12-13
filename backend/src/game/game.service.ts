@@ -1210,129 +1210,97 @@ async sellItem(dto: SellItemDto) {
   }
 
 // =================================================================
-  // ⚔️ JOUER UN TOUR (CORRIGÉ : Prise en compte du Stuff Adversaire)
+  // ⚔️ JOUER UN TOUR (PVP & PVE OPTIMISÉ)
   // =================================================================
   async playTurn(dto: PlayTurnDto) {
+    // 1. VÉRIFICATIONS DE BASE
     const combat = await this.prisma.combats.findUnique({ where: { id: dto.combatId } });
     if (!combat || combat.est_termine) throw new BadRequestException("Combat terminé.");
     if (combat.joueur_id !== dto.userId) throw new BadRequestException("Ce n'est pas ton tour.");
 
-    // 1. Charger l'attaquant AVEC son équipement
+    // 2. CHARGEMENT DES COMBATTANTS (AVEC ÉQUIPEMENT COMPLET)
     const attaquant = await this.prisma.joueurs.findUnique({
         where: { id: combat.joueur_id! },
         include: {
             inventaire: { include: { objets: true } }, 
-            // On inclut les relations directes au cas où, mais inventaire suffit pour calculatePlayerStats
             equip_tete: true, equip_corps: true, equip_bottes: true,
             equip_bague: true, equip_collier: true
         }
     });
 
-    // 🔥 CORRECTION ICI : On charge aussi l'équipement de l'adversaire !
     const adversaire = await this.prisma.joueurs.findUnique({ 
         where: { id: combat.adversaire_id! },
         include: {
-            inventaire: { include: { objets: true } } // Indispensable pour les stats
+            inventaire: { include: { objets: true } } // Crucial pour calculer la défense/force adverse
         }
     });
 
     if (!attaquant || !adversaire) throw new BadRequestException("Combattants introuvables.");
 
-    const skill = await this.prisma.competences.findUnique({ where: { id: dto.skillId } });
-    if (!skill) throw new BadRequestException("Compétence inconnue.");
+    const skillJoueur = await this.prisma.competences.findUnique({ where: { id: dto.skillId } });
+    if (!skillJoueur) throw new BadRequestException("Compétence inconnue.");
 
-    // =================================================================
-    // 📊 CALCUL DES STATS TOTALES (JOUEUR & ADVERSAIRE)
-    // =================================================================
-    
-    // Stats du Joueur
+    // 3. CALCUL DES STATS (BASE + STUFF)
     const statsAtk = this.calculatePlayerStats(attaquant);
-
-    // Stats de l'Adversaire (Bot ou Joueur)
-    // Par défaut, on prend les stats calculées (Stuff inclus)
     const statsAdv = this.calculatePlayerStats(adversaire);
-    
-    let forceBot = statsAdv.force;
-    let defenseBot = statsAdv.defense;
-
-    // Si c'est un BOT (PNJ), on applique le scaling par niveau si ses stats sont faibles
-    if (adversaire.is_bot) {
-        const niv = adversaire.niveau ?? 1;
-        // Si le bot n'a pas de stats définies manuellement en BDD, on boost
-        if (forceBot < 5) forceBot = 10 + (niv * 4); 
-        if (defenseBot < 5) defenseBot = 5 + (niv * 2);
-    }
 
     // =================================================================
-    // 🛡️ DÉTECTION DU TYPE DE LA COMPÉTENCE
+    // 💥 TOUR DU JOUEUR (ATTAQUANT)
     // =================================================================
     
+    // Vérification des pré-requis (Armes)
     const armeEquipee = attaquant.inventaire.find(i => i.est_equipe && i.objets.type_equipement === 'MAIN_DROITE');
     const nomArme = (armeEquipee?.objets?.nom || "").toUpperCase();
-    const nomSkill = skill.nom.toUpperCase();
-    const typeSkill = (skill.type_degats || "").toUpperCase();
+    const nomSkill = skillJoueur.nom.toUpperCase();
+    const typeSkill = (skillJoueur.type_degats || "").toUpperCase();
 
-    // ... (Ton code de vérification Arme/Skill reste inchangé ici) ...
-    // Je remets le bloc complet pour éviter les erreurs de copier-coller
-    const KW_SKILL_SWORD = ["COUPE", "ESTOCADE", "LAME", "SABRE", "CHASSEUR", "TOURBILLON", "CHANT", "TROIS", "KAMUSARI", "SLASH", "ZORO", "ONIGIRI"];
-    const KW_ITEM_SWORD  = ["SABRE", "ÉPÉE", "EPEE", "KATANA", "LAME", "DAGUE", "COUTEAU", "YORU", "WADO", "KITETSU"];
-    const KW_SKILL_GUN   = ["TIR", "BALLE", "RAFALE", "CANON", "SNIPER", "PLOMB", "EXPLOSIVE", "MOUSQUET", "PRÉCISION", "MITRAIL"];
-    const KW_ITEM_GUN    = ["PISTOLET", "FUSIL", "LANCE", "CANON", "SNIPER", "MOUSQUET", "REVOLVER", "BAZOOKA", "ARC", "ARBALÈTE", "FLINGUE", "BASIQUE"];
-    const FRUIT_TYPES    = ['FEU', 'GLACE', 'FOUDRE', 'ELASTIQUE', 'SPECIAL', 'MAGMA', 'LUMIERE', 'TENEBRES', 'GRAVITE', 'POISON', 'OP'];
+    // Listes de mots-clés
+    const KW = {
+        SWORD_SKILL: ["COUPE", "ESTOCADE", "LAME", "SABRE", "CHASSEUR", "TOURBILLON", "CHANT", "TROIS", "KAMUSARI", "SLASH", "ZORO", "ONIGIRI"],
+        SWORD_ITEM:  ["SABRE", "ÉPÉE", "EPEE", "KATANA", "LAME", "DAGUE", "COUTEAU", "YORU", "WADO", "KITETSU"],
+        GUN_SKILL:   ["TIR", "BALLE", "RAFALE", "CANON", "SNIPER", "PLOMB", "EXPLOSIVE", "MOUSQUET", "PRÉCISION", "MITRAIL"],
+        GUN_ITEM:    ["PISTOLET", "FUSIL", "LANCE", "CANON", "SNIPER", "MOUSQUET", "REVOLVER", "BAZOOKA", "ARC", "ARBALÈTE", "FLINGUE", "BASIQUE"],
+        FRUIT_TYPES: ['FEU', 'GLACE', 'FOUDRE', 'ELASTIQUE', 'SPECIAL', 'MAGMA', 'LUMIERE', 'TENEBRES', 'GRAVITE', 'POISON', 'OP']
+    };
 
     let skillCategory = 'PHYSIQUE';
-
-    if (FRUIT_TYPES.includes(typeSkill)) {
-        skillCategory = 'FRUIT';
-    }
-    else if (KW_SKILL_SWORD.some(k => nomSkill.includes(k))) {
+    if (KW.FRUIT_TYPES.includes(typeSkill)) skillCategory = 'FRUIT';
+    else if (KW.SWORD_SKILL.some(k => nomSkill.includes(k))) {
         skillCategory = 'SABRE';
-        const hasSword = KW_ITEM_SWORD.some(k => nomArme.includes(k));
-        if (!hasSword) throw new BadRequestException(`🚫 Il te faut une Épée/Sabre pour utiliser "${skill.nom}" !`);
+        if (!KW.SWORD_ITEM.some(k => nomArme.includes(k))) throw new BadRequestException(`Il faut une Épée pour utiliser ${skillJoueur.nom} !`);
     }
-    else if (typeSkill === 'DISTANCE' || KW_SKILL_GUN.some(k => nomSkill.includes(k))) {
+    else if (typeSkill === 'DISTANCE' || KW.GUN_SKILL.some(k => nomSkill.includes(k))) {
         skillCategory = 'DISTANCE';
-        const hasGun = KW_ITEM_GUN.some(k => nomArme.includes(k));
-        if (nomSkill.includes("PIERRE")) { /* Passe */ } 
-        else if (!hasGun) {
-            throw new BadRequestException(`🚫 Il te faut une Arme à distance pour utiliser "${skill.nom}" !`);
-        }
+        if (!nomSkill.includes("PIERRE") && !KW.GUN_ITEM.some(k => nomArme.includes(k))) throw new BadRequestException(`Il faut une Arme à feu pour utiliser ${skillJoueur.nom} !`);
     }
 
-    // =================================================================
-    // 💥 TOUR JOUEUR : CALCUL DES DÉGÂTS
-    // =================================================================
-
+    // Sélection de la Stat Offensive
     let statUtilisee = statsAtk.force; 
     if (skillCategory === 'DISTANCE') statUtilisee = statsAtk.agilite;
     if (skillCategory === 'FRUIT') statUtilisee = statsAtk.intelligence * 1.5;
 
-    const skillPower = skill.puissance ?? 10;
-
-    // Dégâts Joueur vs Défense Totale Adversaire
-    let degatsJoueur = Math.floor( (statUtilisee + skillPower) * (0.9 + Math.random() * 0.2) ) - Math.floor(defenseBot / 2);
-    if (degatsJoueur < 1) degatsJoueur = 1;
-
-    // Critique
-    const critChance = statsAtk.chance * 0.1;
-    if (Math.random() * 100 < critChance) {
+    // Calcul Dégâts
+    const puissanceSkill = skillJoueur.puissance ?? 10;
+    // Formule : (Stat + Puissance) * Aleatoire - (DefenseAdverse / 2)
+    let degatsJoueur = Math.floor( (statUtilisee + puissanceSkill) * (0.9 + Math.random() * 0.2) ) - Math.floor(statsAdv.defense / 2);
+    
+    // Coup Critique
+    if (Math.random() * 100 < statsAtk.chance * 0.1) {
         degatsJoueur = Math.floor(degatsJoueur * 1.5);
     }
+    if (degatsJoueur < 1) degatsJoueur = 1;
 
-    // Mise à jour PV
+    // Application
     let pvAdvRestant = (combat.pv_adversaire_actuel ?? 100) - degatsJoueur;
     if (pvAdvRestant < 0) pvAdvRestant = 0;
 
-    const logJ = `Tu utilises ${skill.nom} et infliges ${degatsJoueur} dégâts !`;
+    const logJ = `Tu utilises ${skillJoueur.nom} et infliges ${degatsJoueur} dégâts !`;
 
-    // --- VICTOIRE JOUEUR ---
+    // --- CAS VICTOIRE JOUEUR ---
     if (pvAdvRestant <= 0) {
-        // ... (Ton bloc victoire reste inchangé) ...
-        // Je le remets pour être complet
         const gainXp = 50 * (adversaire.niveau ?? 1);
         const gainBerrys = 100 * (adversaire.niveau ?? 1);
-        const gainElo = adversaire.is_bot ? 0 : 15;
-
+        
         let newXp = (attaquant.xp || 0) + gainXp;
         let newLevel = attaquant.niveau || 1;
         let levelsGained = 0;
@@ -1348,110 +1316,130 @@ async sellItem(dto: SellItemDto) {
             niveau: newLevel,
             berrys: { increment: gainBerrys },
             victoires: { increment: 1 },
-            victoires_pve: adversaire.is_bot ? { increment: 1 } : undefined,
-            victoires_pvp: !adversaire.is_bot ? { increment: 1 } : undefined,
-            elo_pvp: { increment: gainElo }
+            elo_pvp: { increment: adversaire.is_bot ? 0 : 15 }
         };
+
+        if (adversaire.is_bot) updateData.victoires_pve = { increment: 1 };
+        else updateData.victoires_pvp = { increment: 1 };
 
         let finalLog = "VICTOIRE !";
         if (levelsGained > 0) {
             finalLog += ` NIVEAU UP ! (Niv ${newLevel})`;
-            const bonusStat = levelsGained * 5; // Correction : 5 pts par niveau
-            updateData.points_carac = { increment: bonusStat };
-            
-            // Soin Level Up
-            const bonusPvFromLevel = levelsGained * 20; // Approx
-            const newPvMax = statsAtk.pv_max_total + bonusPvFromLevel; 
-            updateData.pv_actuel = newPvMax;
+            updateData.points_carac = { increment: levelsGained * 5 };
+            // Soin complet au Level Up
+            updateData.pv_actuel = statsAtk.pv_max_total + (levelsGained * 20);
             updateData.energie_actuelle = 10;
         }
 
         await this.prisma.$transaction([
             this.prisma.combats.update({
                 where: { id: combat.id },
-                data: { 
-                    est_termine: true, 
-                    pv_adversaire_actuel: 0, 
-                    vainqueur_id: attaquant.id, 
-                    log_combat: [...(combat.log_combat as any[]), logJ, finalLog] 
-                }
+                data: { est_termine: true, pv_adversaire_actuel: 0, vainqueur_id: attaquant.id, log_combat: [...(combat.log_combat as any[]), logJ, finalLog] }
             }),
-            this.prisma.joueurs.update({
-                where: { id: attaquant.id },
-                data: updateData
-            })
+            this.prisma.joueurs.update({ where: { id: attaquant.id }, data: updateData })
         ]);
 
         await this.clearCache(dto.userId);
         this.updateQuestProgress(dto.userId, 'ARENA_FIGHT', 1);
+        
         return { 
-            etat: 'VICTOIRE', 
-            log_joueur: logJ, 
-            log_ia: levelsGained > 0 ? `Niveau ${newLevel} atteint !` : "L'adversaire est K.O. !", 
-            pv_adv: 0, 
-            pv_moi: levelsGained > 0 ? updateData.pv_actuel : combat.pv_joueur_actuel, 
-            gain_xp: gainXp, 
-            gain_berrys: gainBerrys, 
-            gain_elo: gainElo,
-            newLevel: newLevel
+            etat: 'VICTOIRE', log_joueur: logJ, log_ia: levelsGained > 0 ? `Niveau ${newLevel} !` : "Adversaire K.O.", 
+            pv_adv: 0, pv_moi: levelsGained > 0 ? updateData.pv_actuel : combat.pv_joueur_actuel, 
+            gain_xp: gainXp, gain_berrys: gainBerrys, newLevel 
         };
     }
 
     // =================================================================
-    // 🤖 TOUR ADVERSAIRE (IA)
+    // 🤖 TOUR DE L'ADVERSAIRE (IA / JOUEUR PVP)
     // =================================================================
     
-    // 🔥 ICI C'EST LE FIX : On utilise forceBot qui contient maintenant le BONUS D'ARME
-    // (Calculé tout en haut via statsAdv.force)
+    let degatsIA = 0;
+    let logIA = "";
+
+    // 🅰️ ADVERSAIRE = BOT
+    if (adversaire.is_bot) {
+        // Boost des bots bas niveau pour challenge
+        let forceBot = statsAdv.force;
+        if (forceBot < 5) forceBot = 10 + ((adversaire.niveau ?? 1) * 4);
+        
+        degatsIA = Math.floor( forceBot * (0.8 + Math.random() * 0.4) ) - Math.floor(statsAtk.defense / 3);
+        logIA = `${adversaire.pseudo} attaque et t'inflige ${Math.max(1, degatsIA)} dégâts !`;
+    } 
     
-    let degatsIA = Math.floor( forceBot * (0.8 + Math.random() * 0.4) ) - Math.floor(statsAtk.defense / 3);
+    // 🅱️ ADVERSAIRE = JOUEUR RÉEL (PVP)
+    else {
+        // 1. On récupère son Deck
+        const deckIds = (adversaire.deck_combat as number[]) || [];
+        
+        let skillIA: any = null;
+        let statAttaqueIA = statsAdv.force; // Par défaut Force
+
+        // 2. S'il a des skills, on en choisit un au hasard
+        if (deckIds.length > 0) {
+            const randomId = deckIds[Math.floor(Math.random() * deckIds.length)];
+            skillIA = await this.prisma.competences.findUnique({ where: { id: Number(randomId) } });
+        }
+
+        // 3. Calcul Dégâts
+        if (skillIA) {
+            // Adaptation Stat selon Type Skill IA
+            const typeIA = (skillIA.type_degats || "").toUpperCase();
+            if (KW.FRUIT_TYPES.includes(typeIA)) statAttaqueIA = statsAdv.intelligence * 1.5;
+            else if (typeIA === 'DISTANCE') statAttaqueIA = statsAdv.agilite;
+            
+            const puissanceIA = skillIA.puissance ?? 10;
+            
+            // Calcul avec Skill
+            degatsIA = Math.floor( (statAttaqueIA + puissanceIA) * (0.9 + Math.random() * 0.2) ) - Math.floor(statsAtk.defense / 2);
+            logIA = `${adversaire.pseudo} utilise ${skillIA.nom} et inflige ${Math.max(1, degatsIA)} dégâts !`;
+        } 
+        else {
+            // Pas de Deck ou Pas de Skill -> Attaque de base avec sa FORCE TOTALE (pas juste 1)
+            degatsIA = Math.floor( statsAdv.force * (0.8 + Math.random() * 0.2) ) - Math.floor(statsAtk.defense / 3);
+            logIA = `${adversaire.pseudo} te frappe et inflige ${Math.max(1, degatsIA)} dégâts !`;
+        }
+    }
+
     if (degatsIA < 1) degatsIA = 1;
 
+    // Mise à jour PV Joueur
     let pvJoueurRestant = (combat.pv_joueur_actuel ?? 100) - degatsIA;
     if (pvJoueurRestant < 0) pvJoueurRestant = 0;
 
-    const logIA = `${adversaire.pseudo} attaque et t'inflige ${degatsIA} dégâts !`;
-
-    // --- DÉFAITE ---
+    // --- CAS DÉFAITE JOUEUR ---
     if (pvJoueurRestant <= 0) {
         const perteBerrys = Math.floor((attaquant.berrys || 0) * 0.50);
-        const msgDefaite = `DÉFAITE... Tu t'effondres et perds ${perteBerrys.toLocaleString()} ฿.`;
+        const msgDefaite = `DÉFAITE... Tu perds ${perteBerrys.toLocaleString()} ฿.`;
 
         await this.prisma.$transaction([
             this.prisma.combats.update({
                 where: { id: combat.id },
-                data: { 
-                    est_termine: true, 
-                    pv_adversaire_actuel: pvAdvRestant, 
-                    pv_joueur_actuel: 0, 
-                    vainqueur_id: adversaire.id, 
-                    log_combat: [...(combat.log_combat as any[]), logJ, logIA, msgDefaite] 
-                }
+                data: { est_termine: true, pv_adversaire_actuel: pvAdvRestant, pv_joueur_actuel: 0, vainqueur_id: adversaire.id, log_combat: [...(combat.log_combat as any[]), logJ, logIA, msgDefaite] }
             }),
-            this.prisma.joueurs.update({ 
-                where: { id: attaquant.id }, 
+            this.prisma.joueurs.update({
+                where: { id: attaquant.id },
                 data: { 
                     defaites: { increment: 1 }, 
                     defaites_pve: adversaire.is_bot ? { increment: 1 } : undefined,
                     defaites_pvp: !adversaire.is_bot ? { increment: 1 } : undefined,
-                    pv_actuel: 0,
-                    berrys: { decrement: perteBerrys }
-                } 
+                    pv_actuel: 0, 
+                    berrys: { decrement: perteBerrys } 
+                }
             })
         ]);
 
+        // Si PVP, le gagnant (adversaire) gagne de l'ELO
+        if (!adversaire.is_bot) {
+            await this.prisma.joueurs.update({ where: { id: adversaire.id }, data: { victoires_pvp: { increment: 1 }, elo_pvp: { increment: 15 } } });
+        }
+
         await this.clearCache(dto.userId);
         this.updateQuestProgress(dto.userId, 'ARENA_FIGHT', 1);
-        return { 
-            etat: 'DEFAITE', 
-            log_joueur: logJ, 
-            log_ia: logIA + " " + msgDefaite, 
-            pv_adv: pvAdvRestant, 
-            pv_moi: 0 
-        };
+        
+        return { etat: 'DEFAITE', log_joueur: logJ, log_ia: logIA + " " + msgDefaite, pv_adv: pvAdvRestant, pv_moi: 0 };
     }
 
-    // --- CONTINUER ---
+    // --- CONTINUER LE COMBAT ---
     await this.prisma.combats.update({
         where: { id: combat.id },
         data: { pv_adversaire_actuel: pvAdvRestant, pv_joueur_actuel: pvJoueurRestant, tour_numero: { increment: 1 }, log_combat: [...(combat.log_combat as any[]), logJ, logIA] }
@@ -1463,46 +1451,40 @@ async sellItem(dto: SellItemDto) {
     return { etat: 'EN_COURS', log_joueur: logJ, log_ia: logIA, pv_adv: pvAdvRestant, pv_moi: pvJoueurRestant };
   }
 
+  // =================================================================
+  // 🎰 CASINO (Reste inchangé mais inclus pour complétude)
+  // =================================================================
   async playCasino(dto: PlayCasinoDto) {
     const joueur = await this.prisma.joueurs.findUnique({ where: { id: dto.userId } });
     if (!joueur) throw new BadRequestException("Joueur inconnu.");
 
     const now = new Date();
-    const COOLDOWN = 5 * 60 * 1000; // 5 minutes en millisecondes
+    const COOLDOWN = 5 * 60 * 1000;
 
-    // --- 1. JEU DE DÉS (Double ou Rien) ---
+    // JEU 1 : DÉS
     if (dto.jeu === 'DES') {
-        // Vérif Cooldown
-        if (joueur.last_play_des && (now.getTime() - joueur.last_play_des.getTime() < COOLDOWN)) {
-            throw new BadRequestException("Attends un peu avant de relancer les dés !");
-        }
-        // Vérif Argent
+        if (joueur.last_play_des && (now.getTime() - joueur.last_play_des.getTime() < COOLDOWN)) throw new BadRequestException("Attends un peu avant de relancer les dés !");
         if ((joueur.berrys ?? 0) < dto.mise) throw new BadRequestException("Pas assez de Berrys.");
 
-        // Logique : 1,2,3 = Perdu / 4,5,6 = Gagné
         const resultat = Math.floor(Math.random() * 6) + 1;
         const victoires = resultat >= 4;
-        const gain = victoires ? dto.mise * 2 : 0;
-
-        // Mise à jour BDD
+        
         await this.prisma.joueurs.update({
             where: { id: dto.userId },
             data: {
-                berrys: victoires ? { increment: dto.mise } : { decrement: dto.mise }, // (+2*mise - mise = +mise)
+                berrys: victoires ? { increment: dto.mise } : { decrement: dto.mise },
                 last_play_des: now,
                 berrys_mises_casino: { increment: dto.mise }
             }
         });
         await this.clearCache(dto.userId);
         this.updateQuestProgress(dto.userId, 'CASINO_PLAY', 1);
-        return { success: victoires, gain: gain, message: victoires ? `Gagné ! (Dés : ${resultat})` : `Perdu... (Dés : ${resultat})` };
+        return { success: victoires, gain: victoires ? dto.mise * 2 : 0, message: victoires ? `Gagné ! (Dés : ${resultat})` : `Perdu... (Dés : ${resultat})` };
     }
 
-    // --- 2. PIERRE FEUILLE CISEAUX ---
+    // JEU 2 : PFC
     if (dto.jeu === 'PFC') {
-        if (joueur.last_play_pfc && (now.getTime() - joueur.last_play_pfc.getTime() < COOLDOWN)) {
-            throw new BadRequestException("Cooldown PFC actif !");
-        }
+        if (joueur.last_play_pfc && (now.getTime() - joueur.last_play_pfc.getTime() < COOLDOWN)) throw new BadRequestException("Cooldown PFC actif !");
         if ((joueur.berrys ?? 0) < dto.mise) throw new BadRequestException("Pas assez de Berrys.");
 
         const choixPossibles = ['PIERRE', 'FEUILLE', 'CISEAUX'];
@@ -1513,22 +1495,13 @@ async sellItem(dto: SellItemDto) {
 
         let issue = 'PERDU';
         if (userChoix === botChoix) issue = 'EGALITE';
-        else if (
-            (userChoix === 'PIERRE' && botChoix === 'CISEAUX') ||
-            (userChoix === 'FEUILLE' && botChoix === 'PIERRE') ||
-            (userChoix === 'CISEAUX' && botChoix === 'FEUILLE')
-        ) issue = 'GAGNE';
+        else if ((userChoix === 'PIERRE' && botChoix === 'CISEAUX') || (userChoix === 'FEUILLE' && botChoix === 'PIERRE') || (userChoix === 'CISEAUX' && botChoix === 'FEUILLE')) issue = 'GAGNE';
 
-        let gain = 0;
         let updateData: any = { last_play_pfc: now, berrys_mises_casino: { increment: dto.mise } };
+        let gain = 0;
 
-        if (issue === 'GAGNE') {
-            gain = dto.mise * 2;
-            updateData.berrys = { increment: dto.mise };
-        } else if (issue === 'PERDU') {
-            updateData.berrys = { decrement: dto.mise };
-        }
-        // Si égalité, on ne touche pas aux berrys (remboursement)
+        if (issue === 'GAGNE') { gain = dto.mise * 2; updateData.berrys = { increment: dto.mise }; }
+        else if (issue === 'PERDU') { updateData.berrys = { decrement: dto.mise }; }
 
         await this.prisma.joueurs.update({ where: { id: dto.userId }, data: updateData });
         await this.clearCache(dto.userId);
@@ -1536,77 +1509,39 @@ async sellItem(dto: SellItemDto) {
         return { success: issue === 'GAGNE', gain: gain, message: `Bot: ${botChoix}. ${issue} !` };
     }
 
-    // --- 3. QUITTE OU DOUBLE (À la suite) ---
+    // JEU 3 : QUITTE OU DOUBLE
     if (dto.jeu === 'QUITTE') {
-        // Logique spéciale : Si c'est le 1er tour, on vérifie cooldown et argent.
-        // Si c'est un tour suivant (streak > 0), on joue "gratuitement" la mise précédente.
-        
         const currentStreak = joueur.casino_streak ?? 0;
 
+        // STOP
         if (dto.choix === 'STOP') {
             if (currentStreak === 0) throw new BadRequestException("Rien à encaisser.");
-            
-            // Calcul du gain cumulé : Mise * (2 puissance streak)
-            // Note: Ta BDD n'a pas stocké la mise initiale, on va supposer que le front l'envoie ou qu'on la fixe.
-            // Pour simplifier ici, on va faire confiance au calcul mathématique :
             const gainFinal = dto.mise * Math.pow(2, currentStreak);
-
-            await this.prisma.joueurs.update({
-                where: { id: dto.userId },
-                data: {
-                    berrys: { increment: gainFinal },
-                    casino_streak: 0,
-                    last_play_quitte: now // Le cooldown démarre quand on encaisse ou perd
-                }
-            });
+            await this.prisma.joueurs.update({ where: { id: dto.userId }, data: { berrys: { increment: gainFinal }, casino_streak: 0, last_play_quitte: now } });
             await this.clearCache(dto.userId);
             this.updateQuestProgress(dto.userId, 'CASINO_PLAY', 1);
             return { success: true, gain_final: gainFinal, message: `Encaissé : ${gainFinal} Berrys !` };
         }
 
-        // Action : LANCER
+        // LANCER
         if (currentStreak === 0) {
-            // Premier tour : on paye
-            if (joueur.last_play_quitte && (now.getTime() - joueur.last_play_quitte.getTime() < COOLDOWN)) {
-                throw new BadRequestException("Cooldown Quitte ou Double actif !");
-            }
+            if (joueur.last_play_quitte && (now.getTime() - joueur.last_play_quitte.getTime() < COOLDOWN)) throw new BadRequestException("Cooldown Quitte ou Double actif !");
             if ((joueur.berrys ?? 0) < dto.mise) throw new BadRequestException("Pas assez de Berrys.");
-            
-            // On débite tout de suite
-            await this.prisma.joueurs.update({ 
-                where: { id: dto.userId }, 
-                data: { berrys: { decrement: dto.mise }, berrys_mises_casino: { increment: dto.mise } } 
-            });
+            await this.prisma.joueurs.update({ where: { id: dto.userId }, data: { berrys: { decrement: dto.mise }, berrys_mises_casino: { increment: dto.mise } } });
         }
 
-        // Le Jeu (50/50)
-        const chance = Math.random();
-        const win = chance > 0.5;
-
+        const win = Math.random() > 0.5;
         if (win) {
-            // Gagné : On augmente le streak
-            await this.prisma.joueurs.update({
-                where: { id: dto.userId },
-                data: { casino_streak: { increment: 1 } }
-            });
+            await this.prisma.joueurs.update({ where: { id: dto.userId }, data: { casino_streak: { increment: 1 } } });
             const nouveauPot = dto.mise * Math.pow(2, currentStreak + 1);
             return { success: true, nouveau_gain: nouveauPot, message: `Bravo ! Pot actuel : ${nouveauPot}` };
         } else {
-            // Perdu : On remet tout à zéro
-            await this.prisma.joueurs.update({
-                where: { id: dto.userId },
-                data: { 
-                    casino_streak: 0, 
-                    last_play_quitte: now,
-                    a_tout_perdu_casino: true // Petit stat fun
-                }
-            });
+            await this.prisma.joueurs.update({ where: { id: dto.userId }, data: { casino_streak: 0, last_play_quitte: now, a_tout_perdu_casino: true } });
             await this.clearCache(dto.userId);
             this.updateQuestProgress(dto.userId, 'CASINO_PLAY', 1);
             return { success: false, gain: 0, message: "Perdu... Tout est parti." };
         }
     }
-
     throw new BadRequestException("Jeu inconnu");
   }
   // =================================================================
