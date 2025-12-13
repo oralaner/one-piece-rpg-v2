@@ -3499,23 +3499,22 @@ async recolterExpedition(dto: { userId: string }) {
 
     // --- 3. CALCUL DE LA RÉUSSITE (Basé sur les Stats du Joueur) ---
     
-    // a. Récupération des Stats Totales (Base + Equipement)
-    // ⚠️ NÉCESSITE que this.calculatePlayerStats(joueur) existe et fonctionne
+    // On doit inclure l'inventaire pour que calculatePlayerStats fonctionne correctement dans la requête principale
+    // (Je suppose que vous avez fait la correction dans le findUnique au début de la fonction)
     const stats = this.calculatePlayerStats(joueur); 
     
-    // b. Définir la Difficulté (Utilisation de 'difficulte' si elle existe, sinon niveau * 30)
+    // a. Définir la Difficulté
     const difficulteIle = destination?.difficulte || (destination?.niveau_requis * 30) || 30; 
     
-    // c. Formule de Puissance Mixte (Doit être la même que le Frontend)
-    // On met en avant l'exploration physique (Force/Agilité)
+    // b. Formule de Puissance Mixte (Doit être la même que le Frontend)
     const puissanceJoueur = (stats.force * 1.5) + (stats.agilite * 1.2) + (stats.intelligence * 1.0);
     
-    // d. Calcul de la Chance (Pivot 50% à puissance égale)
+    // c. Calcul de la Chance (Nouvelle formule stricte)
     let ratio = puissanceJoueur / Math.max(1, difficulteIle);
-    let chancePercent = Math.floor(ratio * 50); // Le ratio * 50 donne 50% à l'équilibre
+    let chancePercent = Math.floor(ratio * 20) + 20; // Pivot à 40% à l'équilibre
     
-    // e. Ajustement de base (pour donner un petit bonus au niveau)
-    chancePercent += Math.max(0, (joueur.niveau || 1) / 2);
+    // d. Ajustement de niveau (+1% tous les 5 niveaux)
+    chancePercent += Math.max(0, (joueur.niveau || 1) / 5);
 
     // Bornes : Min 10%, Max 95%
     chancePercent = Math.min(95, Math.max(10, chancePercent));

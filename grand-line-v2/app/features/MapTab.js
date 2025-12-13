@@ -22,41 +22,30 @@ const MapTab = ({ destinations, joueur, expeditionChrono, onTravel, onCollect, t
         mapRef.current.scrollTop = startPos.current.top - dy;
     };
 
-   // --- CALCUL CHANCE (Basé sur les Stats Totales & Équipement) ---
+   // --- CALCUL CHANCE (Version Ré-étalonnée et Stricte) ---
     const getSuccessRate = (dest) => {
-        if (!joueur) return 0;
+        if (!joueur || !joueur.statsTotales) return 10; // 10% par défaut si stats non chargées
 
-        // 1. Calcul de la PUISSANCE MOYENNE du joueur
-        // On suppose que joueur.statsTotales est un objet calculé qui contient les totaux (Base + Équipement)
-        // Si tu n'as pas de statsTotales, on prend les stats de base du joueur (pas idéal, mais sécurisé)
-        const stats = joueur.statsTotales || { 
-            force: joueur.force || 0, 
-            agilite: joueur.agilite || 0, 
-            intelligence: joueur.intelligence || 0 
-        };
+        // 1. Calcul de la PUISSANCE MOYENNE du joueur (identique au Backend)
+        const stats = joueur.statsTotales;
         
-        // Formule de Puissance Mixte (pour une approche générale de l'exploration)
-        // On donne plus de poids à la Force et l'Agilité pour l'exploration physique.
+        // Priorité aux stats physiques pour l'exploration
         const puissanceJoueur = (stats.force * 1.5) + (stats.agilite * 1.2) + (stats.intelligence * 1.0);
         
         // 2. Définir la DIFFICULTÉ de l'île
-        // On utilise la difficulté (qui devrait être élevée par les créateurs) ou le niveau * 30
-        const difficulteIle = dest.difficulte || (dest.niveau_requis * 30); 
+        // On utilise 'difficulte' si disponible, sinon on se base sur le niveau * 30.
+        const difficulteIle = dest.difficulte || (dest.niveau_requis * 30) || 30; 
 
-        // 3. Calcul de la Chance (Pivot 50% au niveau de difficulté/puissance égale)
-        // Ratio = Puissance Joueur / Difficulté de l'île
+        // 3. Calcul de la Chance (Formule stricte : +20 points pour la base)
         let ratio = puissanceJoueur / Math.max(1, difficulteIle);
         
-        // On utilise un facteur de conversion plus faible (par exemple 20) pour ne pas atteindre 100% trop vite.
-        // On veut que ratio = 1 (Puissance égale) donne environ 50%
-        // Si ratio = 1, (1 * 50) = 50%
-        let percent = Math.floor(ratio * 50);
+        // Pivot bas: Si Puissance = Difficulté, Chance ≈ 40% (20 + 20)
+        let percent = Math.floor(ratio * 20) + 20;
 
-        // Ajustement pour éviter les résultats trop bas (même un niveau 1 doit avoir une chance)
-        // Si percent est trop bas, on ajoute un ajustement basé sur le niveau (ex: Niveau * 1%)
-        percent += Math.max(0, joueur.niveau / 2); // Ajustement de base par niveau
+        // 4. Ajustement de niveau (pour aider les joueurs qui ont grindé des niveaux sans optimiser les stats)
+        percent += Math.max(0, (joueur.niveau || 1) / 5); // +1% tous les 5 niveaux
 
-        // 4. Bornes (Min 10% - Max 95% pour garder un léger risque)
+        // 5. Bornes (Min 10% - Max 95% pour laisser un peu de risque)
         return Math.max(10, Math.min(95, percent));
     };
     // --- DONNÉES MÉTÉO SÉCURISÉES ---
