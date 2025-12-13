@@ -171,38 +171,61 @@ const MapTab = ({ destinations, joueur, expeditionChrono, onTravel, onCollect, t
                 </div>
             </div>
 
-            {/* BANDEAU BAS (Inchangé) */}
+            {/* BANDEAU BAS : DÉTAILS DE LA DESTINATION (Esthétique Améliorée) */}
             {selectedDest && (
-                <div className="absolute bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-white/20 p-4 animate-slideUp z-50 flex flex-col md:flex-row gap-4 justify-between shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 rounded-xl bg-black/50 border border-white/10 flex items-center justify-center text-3xl shrink-0">
-                            {selectedDest.type_lieu === 'VILLAGE' ? '🏠' : '🏝️'}
+                <div className="absolute bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t-4 border-yellow-700/50 p-4 animate-slideUp z-50 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+                    
+                    {/* LIGNE 1 : TITRE & RÉGION */}
+                    <div className="flex items-start gap-4 mb-4 pb-2 border-b border-white/10">
+                        <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-yellow-700 to-black/50 border-2 border-yellow-500/50 flex items-center justify-center text-4xl shrink-0 shadow-inner">
+                            {selectedDest.type_lieu === 'VILLAGE' ? '🏠' : selectedDest.type_lieu === 'CELESTE' ? '☁️' : '🏝️'}
                         </div>
                         <div>
-                            <h3 className="text-xl font-black text-white uppercase font-pirata tracking-wide leading-none">{selectedDest.nom}</h3>
-                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">
-                                {selectedDest.region} • <span className={joueur.niveau >= selectedDest.niveau_requis ? "text-green-400" : "text-red-500"}>Niv {selectedDest.niveau_requis}</span>
+                            <h3 className="text-3xl font-black text-yellow-400 uppercase font-pirata tracking-wide leading-none drop-shadow-lg">{selectedDest.nom}</h3>
+                            <p className="text-sm text-slate-300 font-bold uppercase tracking-widest mt-1">
+                                {selectedDest.region} • <span className={joueur.niveau >= selectedDest.niveau_requis ? "text-green-400" : "text-red-500"}>Niv Requis: {selectedDest.niveau_requis}</span>
                             </p>
                         </div>
                     </div>
                     
-                    <div className="flex flex-wrap items-center justify-between md:justify-end gap-x-6 gap-y-2 w-full md:w-auto border-t md:border-none border-white/10 pt-3 md:pt-0">
-                        <div className="flex gap-4 text-right">
-                            <div>
-                                <p className="text-[10px] uppercase text-slate-500 font-bold">Chance de réussite</p>
-                                <p className="text-[30px] font-mono font-black text-lg text-yellow-400">{getSuccessRate(selectedDest)}%</p>
-                            </div>
-                            <div>
-                                <p className="text-[10px] uppercase text-slate-500 font-bold">Gain approximatif</p>
-                                <p className="text-[30px] font-mono font-bold text-yellow-400">~{selectedDest.gain_estime} ฿</p>
-                            </div>
+                    {/* LIGNE 2 : STATISTIQUES CLÉS (Divisé en 3 colonnes) */}
+                    <div className="flex justify-between items-center w-full gap-4 text-center">
+                        
+                        {/* 1. DURÉE ESTIMÉE */}
+                        <div className="flex-1 p-2 border-r border-white/10">
+                            <p className="text-[10px] uppercase text-slate-500 font-bold tracking-widest">Durée</p>
+                            <p className="text-2xl font-mono font-black text-white mt-1">
+                                {selectedDest.duree_minutes}m
+                            </p>
                         </div>
-                        <div className="flex gap-2">
-                            <button onClick={() => onTravel(selectedDest)} disabled={joueur.niveau < selectedDest.niveau_requis} className={`h-10 px-6 rounded-lg font-black uppercase shadow-lg text-xs tracking-wider ${joueur.niveau >= selectedDest.niveau_requis ? theme.btnPrimary : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}>
-                                {joueur.niveau >= selectedDest.niveau_requis ? 'PARTIR' : 'BLOQUÉ'}
-                            </button>
-                            <button onClick={() => setSelectedDest(null)} className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-600 hover:bg-slate-800 text-slate-400 transition">✕</button>
+
+                        {/* 2. CHANCE DE RÉUSSITE */}
+                        <div className="flex-1 p-2 border-r border-white/10">
+                            <p className="text-[10px] uppercase text-slate-500 font-bold tracking-widest">Réussite</p>
+                            <p className={`text-2xl font-mono font-black mt-1 ${getSuccessRate(selectedDest) > 70 ? 'text-green-400' : getSuccessRate(selectedDest) > 40 ? 'text-yellow-400' : 'text-red-400'}`}>
+                                {getSuccessRate(selectedDest)}%
+                            </p>
                         </div>
+
+                        {/* 3. GAIN APPROXIMATIF */}
+                        <div className="flex-1 p-2">
+                            <p className="text-[10px] uppercase text-slate-500 font-bold tracking-widest">Gain estimé</p>
+                            <p className="text-2xl font-mono font-black text-yellow-400 mt-1">
+                                ~{selectedDest.gain_estime.toLocaleString()} ฿
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* LIGNE 3 : BOUTONS D'ACTION */}
+                    <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-white/10">
+                        <button onClick={() => setSelectedDest(null)} className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-600 hover:bg-slate-800 text-slate-400 transition">✕</button>
+                        <button 
+                            onClick={() => onTravel(selectedDest)} 
+                            disabled={joueur.niveau < selectedDest.niveau_requis} 
+                            className={`h-10 px-6 rounded-lg font-black uppercase shadow-lg text-sm tracking-wider transition-all duration-300 ${joueur.niveau >= selectedDest.niveau_requis ? 'bg-gradient-to-r from-green-600 to-green-500 text-white hover:scale-[1.02]' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}
+                        >
+                            {joueur.niveau >= selectedDest.niveau_requis ? 'LANCER L\'EXPÉDITION' : 'NIVEAU INSUFFISANT'}
+                        </button>
                     </div>
                 </div>
             )}
