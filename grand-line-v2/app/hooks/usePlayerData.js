@@ -2,38 +2,50 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../utils/api';
 
 export const usePlayerData = (userId) => {
+    
     const { data, isLoading, error, refetch } = useQuery({
         queryKey: ['playerData', userId],
         
         queryFn: async () => {
-            // On fait la requête normalement
-            const res = await api.get('/game/player/me');
-            return res.data; // On retourne les données si tout va bien
+            try {
+                const res = await api.get('/game/player/me');
+                return res.data;
+            } catch (err) {
+                // On laisse l'erreur remonter pour que React Query la gère
+                throw err;
+            }
         },
         
         enabled: !!userId,
         
-        // 👇 CRUCIAL : On configure le comportement en cas d'erreur
+        // 👇 C'EST ICI QUE TOUT SE JOUE
         retry: (failureCount, error) => {
-            // Si l'erreur est 404 (Joueur introuvable), on ne réessaie PAS.
-            if (error?.response?.status === 404) return false;
-            // Sinon (erreur 500, réseau...), on réessaie 3 fois max
-            return failureCount < 3;
+            // Si c'est une 404, ON ARRÊTE TOUT DE SUITE (Pas de retry)
+            if (error?.response?.status === 404) {
+                console.log("🛑 404 Détectée -> Arrêt des tentatives");
+                return false;
+            }
+            // Sinon on réessaie un peu
+            return failureCount < 2;
         },
 
         staleTime: 1000 * 60,
         refetchOnWindowFocus: true
     });
 
-    // 👇 On crée un "drapeau" facile à utiliser pour le reste de l'app
-    // Si l'erreur est 404, alors isNewPlayer devient VRAI
+    // 👇 DÉTECTION DU NOUVEAU JOUEUR
+    // On vérifie si l'erreur est bien une 404 (Not Found)
     const isNewPlayer = error?.response?.status === 404;
+
+    if (isNewPlayer) {
+        console.log("🆕 C'est un nouveau joueur ! Flag isNewPlayer = true");
+    }
 
     return { 
         data, 
-        isLoading, 
+        isLoading, // Si il y a une erreur, isLoading passe à false
         error, 
         refetch,
-        isNewPlayer // ✅ Nouvelle variable à utiliser dans ton interface !
+        isNewPlayer // ✅ On exporte cette info capitale
     };
 };
