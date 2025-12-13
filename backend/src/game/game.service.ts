@@ -511,7 +511,7 @@ async getPlayerData(userId: string, discordPseudo?: string, discordAvatar?: stri
             throw new InternalServerErrorException("Erreur création: " + error.message);
         }
     }
-    joueur = await this.checkRegeneration(joueur);
+
     if (!joueur) throw new InternalServerErrorException("Erreur critique: Joueur introuvable.");
 
     // --- RECONSTRUCTION EQUIPEMENT (Inchangé) ---
@@ -1101,26 +1101,15 @@ async sellItem(dto: SellItemDto) {
         }
 
         // 2. Récupération des données (Attaquant + Défenseur)
+        // On utilise getPlayerData pour l'attaquant
+        const attaquant: any = await this.getPlayerData(dto.userId);
         
-        // A. L'ATTAQUANT (Moi)
-        let attaquant: any = await this.getPlayerData(dto.userId);
-
-        // 🔥 MODIFICATION 1 : Régénération passive AVANT le combat
-        // Si le joueur ne s'est pas connecté depuis longtemps, on lui rend PV/Energie maintenant.
-        if (attaquant) {
-            const updatedAttaquant = await this.checkRegeneration(attaquant);
-            // On met à jour l'objet local pour que les checks d'énergie suivants soient corrects
-            attaquant.pv_actuel = updatedAttaquant.pv_actuel;
-            attaquant.energie_actuelle = updatedAttaquant.energie_actuelle;
-        }
-
-        // B. LE DÉFENSEUR (L'Adversaire)
-        // 🔥 MODIFICATION 2 : On charge l'inventaire du défenseur pour calculer ses stats
+        // 🔥 MODIFICATION ICI : On charge l'inventaire du défenseur pour calculer ses stats
         const defenseur = await this.prisma.joueurs.findUnique({ 
             where: { id: dto.targetId },
             include: { 
                 inventaire: { 
-                    where: { est_equipe: true }, // On ne charge que le stuff équipé
+                    where: { est_equipe: true }, // On ne charge que le stuff équipé, ça suffit
                     include: { objets: true } 
                 } 
             }
