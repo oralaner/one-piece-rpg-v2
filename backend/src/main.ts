@@ -6,7 +6,7 @@ async function bootstrap() {
 
   // 👇 CONFIGURATION CORS PERMISSIVE
   app.enableCors({
-    origin: '*', // Autorise toutes les origines (Vercel, Localhost, etc.)
+    origin: 'true', // Autorise toutes les origines (Vercel, Localhost, etc.)
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type, Accept, Authorization',
     credentials: true,

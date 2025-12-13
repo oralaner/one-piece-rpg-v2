@@ -14,7 +14,7 @@ import { PlayTurnDto } from './play-turn.dto'; // Import du DTO combat
 
 @WebSocketGateway({
   cors: {
-    origin: '*', // 🔓 On ouvre tout
+    origin: 'true', // 🔓 On ouvre tout
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
