@@ -180,7 +180,7 @@ model joueurs {
   niveau                               Int?                  @default(1)
   xp                                   Int?                  @default(0)
   berrys                               Int?                  @default(100)
-  faction                              String?               @default("Pirate")
+  faction                              String?               
   derniere_activite                    DateTime?             @default(now()) @db.Timestamptz(6)
   expedition_fin                       DateTime?             @db.Timestamptz(6)
   expedition_dest_id                   Int?

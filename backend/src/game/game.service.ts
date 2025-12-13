@@ -482,7 +482,7 @@ async getPlayerData(userId: string, discordPseudo?: string, discordAvatar?: stri
                     niveau: 1,
                     xp: 0,
                     berrys: 100,
-
+                    faction: null,    
                     // 👇 C'EST ICI QUE ÇA CHANGE
                     points_carac: 5, // ✅ On donne 5 points pour le Tuto
                     
