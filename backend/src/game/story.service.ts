@@ -450,14 +450,44 @@ export class StoryService {
   }
 
   async getUnlockedIslands(userId: string): Promise<number[]> {
-      // (Reste inchangé)
       const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId } });
-      if (!joueur) return [1];
+      
+      // Si pas de joueur, on ne renvoie rien (ou une liste vide)
+      if (!joueur) return []; 
+
       const faction = this.formatFaction(joueur.faction || 'PIRATE');
       const currentChap = joueur.chapitre_actuel || 1;
-      const chapitres = await this.prisma.histoire_chapitres.findMany({ where: { faction: faction, numero: { lte: currentChap } }, select: { unlock_island_id: true } });
-      const unlockedIds = chapitres.map(c => c.unlock_island_id).filter((id): id is number => id !== null);
-      if (!unlockedIds.includes(1)) unlockedIds.push(1);
+
+      // On récupère tous les chapitres validés ou en cours pour CETTE faction
+      const chapitres = await this.prisma.histoire_chapitres.findMany({ 
+          where: { 
+              faction: faction, 
+              numero: { lte: currentChap } 
+          }, 
+          select: { unlock_island_id: true } 
+      });
+
+      // On extrait les IDs des îles
+      const unlockedIds = chapitres
+          .map(c => c.unlock_island_id)
+          .filter((id): id is number => id !== null);
+
+      // 🚨 CORRECTION : On a supprimé la ligne qui forçait l'ID 1 ici !
+      // Maintenant, si tu es Marine, tu auras seulement l'ID de Shells Town (ex: 2).
+      // Si tu es Pirate, tu auras l'ID de Fuchsia (ex: 1).
+
+      // Sécurité : Si la liste est vide (bug de seed ?), on débloque au moins l'île de départ de la faction
+      if (unlockedIds.length === 0) {
+          if (faction === 'MARINE') {
+              const shells = await this.prisma.destinations.findFirst({ where: { nom: 'Shells Town' } });
+              if (shells) unlockedIds.push(shells.id);
+          } else {
+              // Par défaut Fuchsia pour Pirate/Révo
+              const fuchsia = await this.prisma.destinations.findFirst({ where: { nom: 'Village de Fuchsia' } });
+              if (fuchsia) unlockedIds.push(fuchsia.id);
+          }
+      }
+
       return unlockedIds;
   }
 }
