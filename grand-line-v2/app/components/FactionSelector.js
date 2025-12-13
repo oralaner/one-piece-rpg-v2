@@ -1,32 +1,43 @@
 import React, { useState } from 'react';
 import { api } from '../utils/api';
+import { useQueryClient } from '@tanstack/react-query'; // 👈 Import nécessaire
 
 const FactionSelector = ({ onSelect, userId }) => {
     const [loading, setLoading] = useState(false);
+    const queryClient = useQueryClient(); // 👈 Initialisation
 
     const handleChoose = async (faction) => {
         if (loading) return;
-        setLoading(true); // On bloque le bouton
+        setLoading(true);
         try {
-            console.log("Choix faction envoyé :", faction); // Debug
+            console.log("Envoi choix faction:", faction);
             
-            // 1. On envoie la requête
+            // 1. Appel API
             await api.post('/game/faction/choose', { userId, faction });
             
-            console.log("Faction enregistrée ! Rechargement...");
+            console.log("Succès API. Mise à jour force du cache...");
 
-            // 2. On informe le parent (optionnel mais propre)
+            // 2. ⚡ FORCE UPDATE DU CACHE LOCAL (Le secret est ici)
+            // On dit à React : "Ne cherche pas, voici les nouvelles données !"
+            queryClient.setQueryData(['playerData', userId], (oldData) => {
+                if (!oldData) return oldData;
+                return {
+                    ...oldData,
+                    faction: faction, // On injecte la faction choisie
+                    titre_actuel: null // On s'assure que le reste est propre
+                };
+            });
+
+            // 3. On déclenche la suite
             if (onSelect) onSelect(); 
             
-            // 3. On force le rechargement APRÈS un petit délai pour laisser la BDD respirer
-            setTimeout(() => {
-                window.location.reload();
-            }, 500);
+            // Pas de window.location.reload() tout de suite, on laisse React réagir
+            // Le composant parent va voir que 'joueur.faction' existe et va changer d'écran tout seul.
 
         } catch (e) {
-            console.error("Erreur choix faction :", e);
+            console.error(e);
             alert("Erreur lors du choix : " + (e.response?.data?.message || e.message));
-            setLoading(false); // On débloque si erreur
+            setLoading(false);
         }
     };
 

@@ -131,7 +131,7 @@ export default function Home() {
         return bonuses;
     };
     const activeBonuses = getActiveSetBonuses();
-
+console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", joueur?.faction);
     // --- LOGIN & LOADING ---
     if (!game.session) return (
         <main className="flex h-screen flex-col items-center justify-center bg-slate-950 font-sans p-4">
