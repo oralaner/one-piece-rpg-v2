@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, InternalServerErrorException, Inject } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { PrismaService } from '../prisma.service';
@@ -2755,34 +2755,55 @@ async getTravelData() {
      };
   }
 
-// DANS backend/src/game/game.service.ts
+async createPlayer(userId: string, pseudo: string, factionId?: number) {
+    
+    // CORRECTION ERREUR 1 : On utilise findFirst car 'pseudo' n'est pas marqué @unique dans le schema
+    const existingPseudo = await this.prisma.joueurs.findFirst({
+        where: { pseudo: pseudo }
+    });
+    
+    if (existingPseudo) {
+        throw new BadRequestException("Ce pseudo est déjà pris, pirate !");
+    }
 
-// DANS backend/src/game/game.service.ts
-
-// NOTE: Ajoutez cette méthode privée au GameService
-private async createPlayerIfNotFound(userId: string): Promise<any> {
-    const newPlayer = await this.prisma.joueurs.create({
+    // CORRECTION ERREUR 2 : Suppression de ile_id
+    const newJoueur = await this.prisma.joueurs.create({
         data: {
             id: userId,
-            pseudo: `Pirate_${Math.floor(Math.random() * 10000)}`,
+            pseudo: pseudo,
+            // faction_id: factionId, // À décommenter plus tard si besoin
+            
+            // Stats de départ
+            niveau: 1,
+            xp: 0,
+            berrys: 100,
             pv_actuel: 100,
-            last_pv_update: new Date(), 
-            energie_actuelle: 10, // Initialisation Énergie
-            last_energie_update: new Date(), // Initialisation Énergie Timestamp
-            // ... autres champs par défaut si nécessaire ...
+            pv_max_base: 100,
+            last_pv_update: new Date(),
+            energie_actuelle: 10,
+            last_energie_update: new Date(),
+            
+            // Caractéristiques
+            points_carac: 0,
+            force: 1,
+            defense: 1,
+            vitalite: 1,
+            sagesse: 1,
+            chance: 1,
+            agilite: 1,
+            intelligence: 1
+            
+            // ❌ ile_id supprimé pour de bon !
         }
     });
-    return newPlayer;
-}
 
-
-// Dans backend/src/game/game.service.ts
-
+    return newJoueur;
+  }
 async getPlayerData(userId: string) {
     const now = new Date();
 
     // 1. Recherche du joueur
-    let [joueur, allNavires] = await Promise.all([
+    const [joueur, allNavires] = await Promise.all([
         this.prisma.joueurs.findUnique({
             where: { id: userId },
             include: {
@@ -2796,48 +2817,11 @@ async getPlayerData(userId: string) {
         })
     ]);
 
-    // 2. Création si inexistant
+    // 2. STOP CRÉATION AUTO : Si le joueur n'existe pas, on renvoie une 404
+    // CORRECTION ERREUR 3 : NotFoundException est maintenant importé
     if (!joueur) {
-        console.log(`⚠️ Joueur ${userId} introuvable. TENTATIVE DE CRÉATION...`);
-        
-        try {
-            // 👇 J'AI RETIRÉ ile_id CAR IL N'EXISTE PAS
-            const newJoueur = await this.prisma.joueurs.create({
-                data: {
-                    id: userId,
-                    pseudo: `Pirate_${userId.substring(0, 5)}`,
-                    pv_actuel: 100,
-                    pv_max_base: 100,
-                    last_pv_update: new Date(),
-                    energie_actuelle: 10,
-                    last_energie_update: new Date(),
-                    niveau: 1,
-                    berrys: 100,
-                    xp: 0,
-                    points_carac: 0,
-                    force: 1,
-                    defense: 1,
-                    vitalite: 1,
-                    sagesse: 1,
-                    chance: 1,
-                    agilite: 1,
-                    intelligence: 1
-                    // ❌ ile_id supprimé !
-                }
-            });
-
-            console.log("✨ [SUCCÈS] Joueur créé !");
-            joueur = newJoueur as any;
-
-        } catch (error) {
-            console.error("❌❌❌ CRASH CRÉATION JOUEUR ❌❌❌", error);
-            // On affiche l'erreur exacte pour savoir si c'est une autre colonne qui manque
-            throw new InternalServerErrorException("Erreur création: " + error.message);
-        }
+        throw new NotFoundException("Joueur introuvable. Veuillez créer un personnage.");
     }
-
-    // 3. Sécurité finale
-    if (!joueur) throw new InternalServerErrorException("Joueur introuvable après tentative de création.");
 
     // --- RECONSTRUCTION EQUIPEMENT ---
     const equipementMap: any = { arme: null, tete: null, corps: null, bottes: null, bague: null, collier: null, navire: null };
@@ -2906,7 +2890,7 @@ async getPlayerData(userId: string) {
             niveau: nextShipRef.niveau,
             nom: nextShipRef.nom,
             description: nextShipRef.description,
-            cout_berrys: Number(nextShipRef.prix_berrys), // Conversion sécurisée pour le Frontend
+            cout_berrys: Number(nextShipRef.prix_berrys),
             image_url: nextShipRef.image_url,
             listeMateriaux: nextShipRef.cout_items.map(cout => ({
                 id: cout.objet.id,
