@@ -3497,20 +3497,23 @@ async unlockTitle(userId: string, nomTitre: string) {
         });
     }
 
-    // --- 3. CALCUL DE LA RÉUSSITE ---
-    const difficulty = destination?.niveau_requis || 10; // Valeur par défaut si bug ou ID null
+    // --- 3. CALCUL DE LA RÉUSSITE (Version Équilibrée) ---
+    const difficulty = destination?.niveau_requis || 10;
     const playerLevel = joueur.niveau || 1;
 
-    // Formule : Ratio Niveau / Difficulté
-    let ratio = playerLevel / Math.max(1, difficulty);
-    let chancePercent = Math.floor(ratio * 110); // Bonus x1.1
-    chancePercent = Math.min(100, Math.max(10, chancePercent)); // Entre 10% et 100%
+    // Formule : 50% de base + 3% par niveau d'écart
+    let baseChance = 50;
+    let levelDifference = playerLevel - difficulty;
+    let chancePercent = baseChance + (levelDifference * 3);
+
+    // Bornes : Min 10%, Max 100%
+    chancePercent = Math.min(100, Math.max(10, chancePercent));
 
     // 🎲 TIRAGE AU SORT
     const roll = Math.random() * 100;
     const isSuccess = roll <= chancePercent;
 
-    console.log(`🎲 Expédition ${joueur.pseudo} : ${chancePercent}% chance. Roll: ${roll.toFixed(1)} -> ${isSuccess ? "SUCCÈS" : "ÉCHEC"}`);
+    console.log(`🎲 Expédition ${joueur.pseudo} (Niv ${playerLevel}) vs Île (Niv ${difficulty}) : ${chancePercent}% chance. Roll: ${roll.toFixed(1)} -> ${isSuccess ? "SUCCÈS" : "ÉCHEC"}`);
 
     // --- CAS D'ÉCHEC ---
     if (!isSuccess) {

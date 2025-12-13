@@ -22,26 +22,27 @@ const MapTab = ({ destinations, joueur, expeditionChrono, onTravel, onCollect, t
         mapRef.current.scrollTop = startPos.current.top - dy;
     };
 
-   // --- CALCUL CHANCE (Basé sur le Niveau) ---
+   // --- CALCUL CHANCE (Version Équilibrée "Risque & Récompense") ---
     const getSuccessRate = (dest) => {
         if (!joueur) return 0;
 
-        // 1. Difficulté de l'île (Fallback sur ID si pas de niveau requis)
+        // 1. Difficulté de l'île
         const difficulty = dest.niveau_requis || (dest.id * 5); 
         const playerLevel = joueur.niveau || 1;
 
-        // 2. Formule : Ratio Niveau / Difficulté
-        // Ex: Joueur Niv 5 sur Île Niv 10 = 0.5 (50%)
-        // Ex: Joueur Niv 10 sur Île Niv 10 = 1.0 (100%)
-        let ratio = playerLevel / Math.max(1, difficulty);
+        // 2. Formule "Pivot 50%"
+        // À niveau égal, on a 50% de chance.
+        // Chaque niveau supplémentaire donne +3%.
+        // Chaque niveau en moins enlève 3%.
+        let baseChance = 50;
+        let levelDifference = playerLevel - difficulty;
+        
+        let percent = baseChance + (levelDifference * 3);
 
-        // 3. Bonus : On multiplie par 110 pour être gentil (atteindre 100% un peu avant le niveau requis)
-        let percent = Math.floor(ratio * 110);
-
-        // 4. Bornes (Min 10% - Max 100%)
+        // 3. Bornes (Min 10% - Max 100%)
+        // On laisse toujours une petite chance de réussir (10%) ou d'échouer (sauf si on écrase le niveau)
         return Math.max(10, Math.min(100, percent));
     };
-
     // --- DONNÉES MÉTÉO SÉCURISÉES ---
     const currentMeteo = meteoData || { 
         id: 'CLEAR', 
