@@ -1379,7 +1379,7 @@ async sellItem(dto: SellItemDto) {
                 data: updateData
             })
         ]);
-
+        await this.checkAndUnlockTitles(dto.userId);
         await this.clearCache(dto.userId);
         this.updateQuestProgress(dto.userId, 'ARENA_FIGHT', 1);
         return { 
@@ -1413,8 +1413,27 @@ async sellItem(dto: SellItemDto) {
     // --- DÉFAITE ---
     if (pvJoueurRestant <= 0) {
         const perteBerrys = Math.floor((attaquant.berrys || 0) * 0.50);
-        const msgDefaite = `DÉFAITE... Tu t'effondres et perds ${perteBerrys.toLocaleString()} ฿.`;
+        const gainXpConsolation = 10; // Tu peux mettre 0 si tu ne veux pas d'XP en cas de défaite
 
+        // 🔥 1. CALCUL LEVEL UP (Même pour 10 XP, c'est obligatoire pour éviter le bug)
+        const { updateData, levelsGained, newLevel } = this.calculateLevelUp(attaquant, gainXpConsolation);
+
+        // 🔥 2. ON AJOUTE LES CONSÉQUENCES DE LA DÉFAITE À L'OBJET updateData
+        updateData.defaites = { increment: 1 };
+        updateData.pv_actuel = 0; // On force 0 PV même si le level up voulait soigner
+        updateData.berrys = { decrement: perteBerrys }; // On applique la perte d'argent
+        
+        // Gestion PVP / PVE
+        if (adversaire.is_bot) updateData.defaites_pve = { increment: 1 };
+        else updateData.defaites_pvp = { increment: 1 };
+
+        // Construction du message
+        let msgDefaite = `DÉFAITE... Tu t'effondres et perds ${perteBerrys.toLocaleString()} ฿.`;
+        if (levelsGained > 0) {
+            msgDefaite += ` (Mais l'expérience t'a endurci : NIVEAU ${newLevel} !)`;
+        }
+
+        // 🔥 3. TRANSACTION
         await this.prisma.$transaction([
             this.prisma.combats.update({
                 where: { id: combat.id },
@@ -1428,18 +1447,16 @@ async sellItem(dto: SellItemDto) {
             }),
             this.prisma.joueurs.update({ 
                 where: { id: attaquant.id }, 
-                data: { 
-                    defaites: { increment: 1 }, 
-                    defaites_pve: adversaire.is_bot ? { increment: 1 } : undefined,
-                    defaites_pvp: !adversaire.is_bot ? { increment: 1 } : undefined,
-                    pv_actuel: 0,
-                    berrys: { decrement: perteBerrys }
-                } 
+                data: updateData // On utilise l'objet calculé et fusionné
             })
         ]);
 
+        // 🔥 4. VÉRIFICATION DES TITRES (Ex: "Roi de la lose")
+        await this.checkAndUnlockTitles(dto.userId);
+
         await this.clearCache(dto.userId);
         this.updateQuestProgress(dto.userId, 'ARENA_FIGHT', 1);
+
         return { 
             etat: 'DEFAITE', 
             log_joueur: logJ, 
@@ -3376,6 +3393,117 @@ async unlockTitle(userId: string, nomTitre: string) {
 
       return { updateData, levelsGained, newLevel: currentLevel };
   }
+  // =================================================================
+  // 🏆 SYSTÈME DE TITRES : MOTEUR DE VÉRIFICATION
+  // =================================================================
+  private async checkAndUnlockTitles(userId: string) {
+    // 1. Charger le joueur avec TOUTES les infos nécessaires (Faction, Equipage, etc.)
+    const joueur = await this.prisma.joueurs.findUnique({
+        where: { id: userId },
+        include: { 
+            equipage: true, // Pour les titres liés au niveau d'équipage
+            joueur_titres: true // Pour savoir ce qu'il a déjà
+        }
+    });
+
+    if (!joueur) return;
+
+    // 2. Charger tous les titres de référence
+    const allTitres = await this.prisma.titres_ref.findMany();
+
+    // 3. Créer un Set des IDs déjà possédés pour optimiser la boucle
+    const titresPossedesIds = new Set(joueur.joueur_titres.map(t => t.titre_id));
+
+    const newUnlockedTitres: string[] = [];
+
+    // 4. Boucle de vérification
+    for (const titre of allTitres) {
+        if (titresPossedesIds.has(titre.id)) continue; // Déjà acquis
+
+        let conditionMet = false;
+        const val = Number(titre.condition_valeur); // Conversion BigInt/String -> Number
+
+        switch (titre.condition_type) {
+            // --- FACTIONS & NIVEAU ---
+            case 'LEVEL_PIRATE':
+                // On vérifie que la faction contient "Pirate" (insensible à la casse) et le niveau
+                if (joueur.faction?.toUpperCase().includes('PIRATE') && (joueur.niveau ?? 1) >= val) conditionMet = true;
+                break;
+            case 'LEVEL_MARINE':
+                if (joueur.faction?.toUpperCase().includes('MARINE') && (joueur.niveau ?? 1) >= val) conditionMet = true;
+                break;
+            case 'LEVEL_REVOLUTIONNAIRE':
+                // Attention aux accents dans la BDD vs Code
+                const faction = joueur.faction?.toUpperCase() || "";
+                if ((faction.includes('REVOLUTIONNAIRE') || faction.includes('RÉVOLUTIONNAIRE')) && (joueur.niveau ?? 1) >= val) conditionMet = true;
+                break;
+
+            // --- STATISTIQUES ---
+            case 'STAT_FORCE': if ((joueur.force ?? 0) >= val) conditionMet = true; break;
+            case 'STAT_INTELLIGENCE': if ((joueur.intelligence ?? 0) >= val) conditionMet = true; break;
+            case 'STAT_AGILITE': if ((joueur.agilite ?? 0) >= val) conditionMet = true; break;
+            case 'STAT_SAGESSE': if ((joueur.sagesse ?? 0) >= val) conditionMet = true; break;
+            case 'STAT_VITALITE': if ((joueur.vitalite ?? 0) >= val) conditionMet = true; break;
+            case 'STAT_CHANCE': if ((joueur.chance ?? 0) >= val) conditionMet = true; break;
+
+            // --- COMBATS ---
+            case 'VICTOIRES_PVP': if ((joueur.victoires_pvp ?? 0) >= val) conditionMet = true; break;
+            case 'DEFAITES_PVP': if ((joueur.defaites_pvp ?? 0) >= val) conditionMet = true; break;
+            case 'VICTOIRES_PVE': if ((joueur.victoires_pve ?? 0) >= val) conditionMet = true; break; // "PVP PVM" dans ton seed semble être PVE
+
+            // --- ECONOMIE & DIVERS ---
+            case 'BERRYS': if ((joueur.berrys ?? 0) >= val) conditionMet = true; break;
+            case 'HAS_FRUIT': if (joueur.fruit_demon && val === 1) conditionMet = true; break;
+            
+            // --- NAVIRE & EQUIPAGE ---
+            case 'SHIP_LEVEL': if ((joueur.niveau_navire ?? 1) >= val) conditionMet = true; break;
+            case 'CREW_LEVEL': 
+                // Vérifie si le joueur a un équipage et son niveau
+                if (joueur.equipage && (joueur.equipage.niveau ?? 1) >= val) conditionMet = true; 
+                break;
+            case 'CREW_XP_GIVEN': if (Number(joueur.xp_donnee_equipage ?? 0) >= val) conditionMet = true; break;
+
+            // --- HAKI ---
+            case 'HAKI_COUNT':
+                let hakiCount = 0;
+                if (joueur.haki_observation) hakiCount++;
+                if (joueur.haki_armement) hakiCount++;
+                if (joueur.haki_rois) hakiCount++;
+                if (hakiCount >= val) conditionMet = true;
+                break;
+
+            // --- ACTIONS COMPTEURS ---
+            case 'EXPEDITIONS_COUNT': if ((joueur.nb_expeditions_reussies ?? 0) >= val) conditionMet = true; break;
+            case 'CRAFTS_COUNT': if ((joueur.nb_crafts ?? 0) >= val) conditionMet = true; break;
+            case 'CHESTS_OPENED': if ((joueur.nb_coffres_ouverts ?? 0) >= val) conditionMet = true; break;
+            case 'POTIONS_CONSUMED': if ((joueur.nb_potions_bues ?? 0) >= val) conditionMet = true; break;
+            case 'ACTIVITY_CLICK_COUNT': if ((joueur.nb_activites ?? 0) >= val) conditionMet = true; break;
+            
+            // --- BOUTIQUE / CASINO (Besoin des colonnes dans Prisma) ---
+            case 'SHOP_SPENT': if (Number(joueur.berrys_depenses_shop ?? 0) >= val) conditionMet = true; break;
+            case 'CASINO_WAGERED': if (Number(joueur.berrys_mises_casino ?? 0) >= val) conditionMet = true; break;
+            case 'CASINO_LOST_ALL': if (joueur.a_tout_perdu_casino) conditionMet = true; break;
+            
+            // --- MORT ---
+            case 'HAS_DIED': if ((joueur.pv_actuel ?? 0) <= 0) conditionMet = true; break;
+        }
+
+        // 5. Attribution du titre
+        if (conditionMet) {
+            await this.prisma.joueur_titres.create({
+                data: {
+                    joueur_id: userId,
+                    titre_id: titre.id,
+                    date_obtention: new Date()
+                }
+            });
+            newUnlockedTitres.push(titre.nom);
+            console.log(`🎉 Titre débloqué pour ${joueur.pseudo}: ${titre.nom}`);
+        }
+    }
+
+    return newUnlockedTitres; // On renvoie la liste pour l'afficher au front si besoin
+  }
 // =================================================================
   // 9. ACTIVITÉ / EXPLORATION
   // =================================================================
@@ -3527,25 +3655,36 @@ async recolterExpedition(dto: { userId: string }) {
 
     // --- CAS D'ÉCHEC ---
     if (!isSuccess) {
-        // Gain de consolation (juste un peu d'XP, pas d'objets)
+        // Gain de consolation
         const xpConsolation = Math.floor(50 * Math.max(1, (joueur.niveau || 1) / 2));
         
+        // 🔥 CORRECTION : On utilise calculateLevelUp même pour l'XP de consolation !
+        // Sinon l'XP dépasse le max sans déclencher le passage de niveau.
+        const { updateData, levelsGained, newLevel } = this.calculateLevelUp(joueur, xpConsolation);
+
+        // On ajoute les champs spécifiques à l'échec de l'expédition
+        updateData.expedition_fin = null;
+        
+        // On sauvegarde
         await this.prisma.joueurs.update({
             where: { id: dto.userId },
-            data: { 
-                expedition_fin: null, // On libère le joueur
-                xp: { increment: xpConsolation }
-            }
+            data: updateData
         });
         
+        // On vérifie les titres (ex: Atteindre le niveau 10 grâce à l'échec)
+        const updatedJoueur = await this.prisma.joueurs.findUnique({ where: { id: dto.userId } });
+        if (updatedJoueur) await this.checkAndUnlockTitles(dto.userId);
+
         await this.clearCache(dto.userId);
 
         return {
             success: false,
-            message: "L'expédition a échoué... Vos hommes sont revenus fatigués.",
+            message: levelsGained > 0 
+                ? `Échec... mais l'expérience vous a endurci : NIVEAU ${newLevel} !` 
+                : "L'expédition a échoué... Vos hommes sont revenus bredouilles mais un peu plus sages.",
             rewards: { xp: xpConsolation, berrys: 0, items: [] },
-            leveledUp: false,
-            newLevel: (joueur.niveau || 1)
+            leveledUp: levelsGained > 0,
+            newLevel: newLevel
         };
     }
 
@@ -3601,8 +3740,16 @@ async recolterExpedition(dto: { userId: string }) {
         }
     });
 
+    const newTitres = await this.checkAndUnlockTitles(dto.userId);
+
     await this.clearCache(dto.userId);
     this.updateQuestProgress(dto.userId, 'EXPLORE_ISLAND', 1);
+
+    // Tu peux ajouter les titres au message de retour si tu veux
+    let messageFinale = isLeveledUp ? `Succès ! NIVEAU ${currentNewLevel} ATTEINT !` : `Expédition réussie !`;
+    if (newTitres && newTitres.length > 0) {
+        messageFinale += ` 🏆 Titre(s) débloqué(s) : ${newTitres.join(', ')}`;
+    }
 
     return {
         success: true,
