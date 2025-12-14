@@ -545,18 +545,23 @@ async getDailyQuests(userId: string) {
     // --- 4. RECONSTRUCTION EQUIPEMENT & NAVIRE ---
     const equipementMap: any = { arme: null, tete: null, corps: null, bottes: null, bague: null, collier: null, navire: null };
     
-    // Mapping manuel ou via relation directe (selon ce qui est chargé)
-    if (joueur.equip_arme) equipementMap.arme = { objets: joueur.equip_arme };
-    if (joueur.equip_tete) equipementMap.tete = { objets: joueur.equip_tete };
-    if (joueur.equip_corps) equipementMap.corps = { objets: joueur.equip_corps };
-    if (joueur.equip_bottes) equipementMap.bottes = { objets: joueur.equip_bottes };
-    if (joueur.equip_bague) equipementMap.bague = { objets: joueur.equip_bague };
-    if (joueur.equip_collier) equipementMap.collier = { objets: joueur.equip_collier };
-    
-    // Gestion Navire (souvent dans l'inventaire en tant qu'objet 'NAVIRE')
+    // 🔥 CORRECTION : On parcourt l'inventaire pour trouver ce qui est équipé
+    // C'est la méthode la plus fiable car elle correspond à la logique de playTurn
     if (joueur.inventaire) {
-        const navireItem = joueur.inventaire.find(i => i.est_equipe && i.objets.type_equipement === 'NAVIRE');
-        if (navireItem) equipementMap.navire = navireItem;
+        joueur.inventaire.forEach(invItem => {
+            if (invItem.est_equipe && invItem.objets) {
+                const type = invItem.objets.type_equipement;
+                
+                if (type === 'MAIN_DROITE') equipementMap.arme = invItem;
+                else if (type === 'TETE') equipementMap.tete = invItem;
+                else if (type === 'CORPS') equipementMap.corps = invItem;
+                else if (type === 'PIEDS') equipementMap.bottes = invItem;
+                else if (type === 'ACCESSOIRE_1') equipementMap.bague = invItem;
+                else if (type === 'ACCESSOIRE_2') equipementMap.collier = invItem;
+                // Gestion spéciale pour le Navire (soit type NAVIRE, soit catégorie Navire)
+                else if (type === 'NAVIRE' || invItem.objets.categorie === 'Navire') equipementMap.navire = invItem;
+            }
+        });
     }
 
     // Info Prochain Navire
