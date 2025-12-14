@@ -309,7 +309,7 @@ export class GameService {
   // 1. CONFIGURATION DES TEMPLATES
   private readonly QUEST_TEMPLATES = [
       { type: 'ARENA_FIGHT', desc: "Combattre {x} fois dans l'arène", min: 3, max: 3, xp: 300, berrys: 1500 },
-      { type: 'EXPEDITION', desc: "Terminer {x} expéditions", min: 2, max: 2, xp: 400, berrys: 2000 },
+      { type: 'VOYAGE', desc: "Terminer {x} voyages", min: 2, max: 2, xp: 400, berrys: 2000 },
       { type: 'CASINO_PLAY', desc: "Jouer {x} fois au casino", min: 5, max: 5, xp: 100, berrys: 500 },
       { type: 'ACTIVITY', desc: "Faire {x} activités", min: 3, max: 3, xp: 200, berrys: 800 },
   ];
@@ -3743,7 +3743,7 @@ async recolterExpedition(dto: { userId: string }) {
     const newTitres = await this.checkAndUnlockTitles(dto.userId);
 
     await this.clearCache(dto.userId);
-    this.updateQuestProgress(dto.userId, 'EXPLORE_ISLAND', 1);
+    this.updateQuestProgress(dto.userId, 'VOYAGE', 1);
 
     // Tu peux ajouter les titres au message de retour si tu veux
     let messageFinale = isLeveledUp ? `Succès ! NIVEAU ${currentNewLevel} ATTEINT !` : `Expédition réussie !`;
