@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { usePlayerData } from './usePlayerData';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -51,9 +51,14 @@ export const useGameLogic = () => {
     // Variables dérivées
     const joueur = playerData || null;
     // const equipement = ... (déplacé plus bas pour être sûr)
-    
+    const notificationTimerRef = useRef(null);
     // --- 4. UTILITAIRES ---
     const notify = (input, type = "info") => {
+        // 1. Si un timer tournait déjà, on l'annule pour éviter les conflits
+        if (notificationTimerRef.current) {
+            clearTimeout(notificationTimerRef.current);
+        }
+
         let message = "";
         let notificationType = type;
         let data = null;
@@ -68,15 +73,19 @@ export const useGameLogic = () => {
             message = "Action terminée.";
         }
 
+        // 2. On affiche la notif
         setNotificationState({ 
             message, 
             type: notificationType, 
             data 
         });
         
-        setTimeout(() => setNotificationState(null), 4000);
+        // 3. On lance le nouveau timer de 2 secondes (2000ms)
+        notificationTimerRef.current = setTimeout(() => {
+            setNotificationState(null);
+            notificationTimerRef.current = null;
+        }, 2000); // 👈 C'est ici qu'on règle la durée
     };
-
     // --- 5. MOTEUR DU CHRONO (Voyage) ---
     useEffect(() => {
         if (!joueur) return;
