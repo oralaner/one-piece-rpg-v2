@@ -1479,33 +1479,32 @@ async sellItem(dto: SellItemDto) {
     return { etat: 'EN_COURS', log_joueur: logJ, log_ia: logIA, pv_adv: pvAdvRestant, pv_moi: pvJoueurRestant };
   }
 
+// =================================================================
+  // 🎰 CASINO : DÉS, PFC, QUITTE OU DOUBLE
+  // =================================================================
   async playCasino(dto: PlayCasinoDto) {
     const joueur = await this.prisma.joueurs.findUnique({ where: { id: dto.userId } });
     if (!joueur) throw new BadRequestException("Joueur inconnu.");
 
     const now = new Date();
-    const COOLDOWN = 5 * 60 * 1000; // 5 minutes en millisecondes
+    const COOLDOWN = 5 * 60 * 1000; // 5 minutes
 
-    // --- 1. JEU DE DÉS (Double ou Rien) ---
+    // --- 1. JEU DE DÉS (One shot) ---
     if (dto.jeu === 'DES') {
-        // Vérif Cooldown
         if (joueur.last_play_des && (now.getTime() - joueur.last_play_des.getTime() < COOLDOWN)) {
             throw new BadRequestException("Attends un peu avant de relancer les dés !");
         }
-        // Vérif Argent
         if ((joueur.berrys ?? 0) < dto.mise) throw new BadRequestException("Pas assez de Berrys.");
 
-        // Logique : 1,2,3 = Perdu / 4,5,6 = Gagné
         const resultat = Math.floor(Math.random() * 6) + 1;
         const victoires = resultat >= 4;
         const gain = victoires ? dto.mise * 2 : 0;
 
-        // Mise à jour BDD
         await this.prisma.joueurs.update({
             where: { id: dto.userId },
             data: {
-                berrys: victoires ? { increment: dto.mise } : { decrement: dto.mise }, // (+2*mise - mise = +mise)
-                last_play_des: now,
+                berrys: victoires ? { increment: dto.mise } : { decrement: dto.mise },
+                last_play_des: now, // ICI C'EST OK : Le jeu est fini tout de suite
                 berrys_mises_casino: { increment: dto.mise }
             }
         });
@@ -1514,7 +1513,7 @@ async sellItem(dto: SellItemDto) {
         return { success: victoires, gain: gain, message: victoires ? `Gagné ! (Dés : ${resultat})` : `Perdu... (Dés : ${resultat})` };
     }
 
-    // --- 2. PIERRE FEUILLE CISEAUX ---
+    // --- 2. PIERRE FEUILLE CISEAUX (One shot) ---
     if (dto.jeu === 'PFC') {
         if (joueur.last_play_pfc && (now.getTime() - joueur.last_play_pfc.getTime() < COOLDOWN)) {
             throw new BadRequestException("Cooldown PFC actif !");
@@ -1536,7 +1535,10 @@ async sellItem(dto: SellItemDto) {
         ) issue = 'GAGNE';
 
         let gain = 0;
-        let updateData: any = { last_play_pfc: now, berrys_mises_casino: { increment: dto.mise } };
+        let updateData: any = { 
+            last_play_pfc: now, // ICI C'EST OK : Le jeu est fini tout de suite
+            berrys_mises_casino: { increment: dto.mise } 
+        };
 
         if (issue === 'GAGNE') {
             gain = dto.mise * 2;
@@ -1544,7 +1546,6 @@ async sellItem(dto: SellItemDto) {
         } else if (issue === 'PERDU') {
             updateData.berrys = { decrement: dto.mise };
         }
-        // Si égalité, on ne touche pas aux berrys (remboursement)
 
         await this.prisma.joueurs.update({ where: { id: dto.userId }, data: updateData });
         await this.clearCache(dto.userId);
@@ -1552,19 +1553,14 @@ async sellItem(dto: SellItemDto) {
         return { success: issue === 'GAGNE', gain: gain, message: `Bot: ${botChoix}. ${issue} !` };
     }
 
-    // --- 3. QUITTE OU DOUBLE (À la suite) ---
+    // --- 3. QUITTE OU DOUBLE (Logique Streak) ---
     if (dto.jeu === 'QUITTE') {
-        // Logique spéciale : Si c'est le 1er tour, on vérifie cooldown et argent.
-        // Si c'est un tour suivant (streak > 0), on joue "gratuitement" la mise précédente.
-        
         const currentStreak = joueur.casino_streak ?? 0;
 
+        // A. CAS : STOP (J'encaisse)
         if (dto.choix === 'STOP') {
             if (currentStreak === 0) throw new BadRequestException("Rien à encaisser.");
             
-            // Calcul du gain cumulé : Mise * (2 puissance streak)
-            // Note: Ta BDD n'a pas stocké la mise initiale, on va supposer que le front l'envoie ou qu'on la fixe.
-            // Pour simplifier ici, on va faire confiance au calcul mathématique :
             const gainFinal = dto.mise * Math.pow(2, currentStreak);
 
             await this.prisma.joueurs.update({
@@ -1572,53 +1568,61 @@ async sellItem(dto: SellItemDto) {
                 data: {
                     berrys: { increment: gainFinal },
                     casino_streak: 0,
-                    last_play_quitte: now // Le cooldown démarre quand on encaisse ou perd
+                    last_play_quitte: now // ✅ ON ENCAISSE -> FIN DE PARTIE -> COOLDOWN
                 }
             });
             await this.clearCache(dto.userId);
-            this.updateQuestProgress(dto.userId, 'CASINO_PLAY', 1);
+            this.updateQuestProgress(dto.userId, 'CASINO_PLAY', 1); // Compte comme 1 jeu fini
             return { success: true, gain_final: gainFinal, message: `Encaissé : ${gainFinal} Berrys !` };
         }
 
-        // Action : LANCER
+        // B. CAS : JOUER (Premier tour ou Suivant)
+        
+        // Si c'est le tout premier tour (Streak 0), on vérifie le cooldown et on paye
         if (currentStreak === 0) {
-            // Premier tour : on paye
             if (joueur.last_play_quitte && (now.getTime() - joueur.last_play_quitte.getTime() < COOLDOWN)) {
-                throw new BadRequestException("Cooldown Quitte ou Double actif !");
+                throw new BadRequestException("Attends un peu avant de rejouer au Quitte ou Double !");
             }
             if ((joueur.berrys ?? 0) < dto.mise) throw new BadRequestException("Pas assez de Berrys.");
             
-            // On débite tout de suite
+            // On paye l'entrée
             await this.prisma.joueurs.update({ 
                 where: { id: dto.userId }, 
                 data: { berrys: { decrement: dto.mise }, berrys_mises_casino: { increment: dto.mise } } 
             });
         }
 
-        // Le Jeu (50/50)
+        // Tirage (50/50)
         const chance = Math.random();
         const win = chance > 0.5;
 
         if (win) {
-            // Gagné : On augmente le streak
+            // ✅ VICTOIRE : On augmente juste le streak. 
+            // ⚠️ IMPORTANT : ON NE MET PAS A JOUR last_play_quitte ICI !
+            // Le joueur doit pouvoir rejouer tout de suite.
             await this.prisma.joueurs.update({
                 where: { id: dto.userId },
                 data: { casino_streak: { increment: 1 } }
             });
+            
             const nouveauPot = dto.mise * Math.pow(2, currentStreak + 1);
             return { success: true, nouveau_gain: nouveauPot, message: `Bravo ! Pot actuel : ${nouveauPot}` };
         } else {
-            // Perdu : On remet tout à zéro
+            // ❌ DÉFAITE : Fin de partie
             await this.prisma.joueurs.update({
                 where: { id: dto.userId },
                 data: { 
                     casino_streak: 0, 
-                    last_play_quitte: now,
-                    a_tout_perdu_casino: true // Petit stat fun
+                    last_play_quitte: now, // ✅ PERDU -> FIN DE PARTIE -> COOLDOWN
+                    a_tout_perdu_casino: true 
                 }
             });
             await this.clearCache(dto.userId);
             this.updateQuestProgress(dto.userId, 'CASINO_PLAY', 1);
+            
+            // On vérifie le titre "Malchanceux"
+            await this.checkAndUnlockTitles(dto.userId);
+            
             return { success: false, gain: 0, message: "Perdu... Tout est parti." };
         }
     }
