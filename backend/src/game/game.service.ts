@@ -438,8 +438,12 @@ async getDailyQuests(userId: string) {
       return { success: true, message: `Récompense : +${quest.xp_reward} XP, +${quest.berrys_reward} ฿` };
   }
 
-async getPlayerData(userId: string, discordPseudo?: string, discordAvatar?: string) {
+// =================================================================
+  // 1. CHARGEMENT DU PROFIL (OPTIMISÉ AVEC RESET COMBATS)
+  // =================================================================
+  async getPlayerData(userId: string, discordPseudo?: string, discordAvatar?: string) {
     const now = new Date();
+    const MAX_COMBATS_JOURNALIERS = 20; // 👈 Règle ici ton max de combats par jour
 
     // 1. Recherche du joueur
     let [joueur, allNavires] = await Promise.all([
@@ -456,95 +460,62 @@ async getPlayerData(userId: string, discordPseudo?: string, discordAvatar?: stri
         })
     ]);
 
-    // 2. CRÉATION AUTOMATIQUE INTELLIGENTE
+    // 2. CRÉATION AUTOMATIQUE (Si nouveau)
     if (!joueur) {
-        console.log(`⚠️ Joueur ${userId} introuvable.`);
-        console.log(`✨ CRÉATION AUTO avec Pseudo: ${discordPseudo}`);
-        
-        try {
-            // Nettoyage du pseudo (max 15 caractères, pas de caractères bizarres si possible)
-            // On garde le pseudo Discord s'il existe, sinon fallback
-            const finalPseudo = discordPseudo || `Pirate_${userId.substring(0, 5)}`;
-
-            const newJoueur = await this.prisma.joueurs.create({
-                data: {
-                    id: userId,
-                    pseudo: finalPseudo, 
-                    avatar_url: discordAvatar || null,
-                    
-                    // Stats de départ
-                    pv_actuel: 100,
-                    pv_max_base: 100,
-                    last_pv_update: new Date(),
-                    energie_actuelle: 10,
-                    last_energie_update: new Date(),
-                    
-                    niveau: 1,
-                    xp: 0,
-                    berrys: 100,
-                    faction: null,    
-                    // 👇 C'EST ICI QUE ÇA CHANGE
-                    points_carac: 5, // ✅ On donne 5 points pour le Tuto
-                    
-                    force: 0,        // 0 partout ailleurs
-                    defense: 0,
-                    vitalite: 0,
-                    sagesse: 0,
-                    chance: 0,
-                    agilite: 0,
-                    intelligence: 0,
-                }
-            });
-
-            console.log("✨ [SUCCÈS] Joueur créé !");
-            joueur = newJoueur as any;
-
-        } catch (error) {
-            console.error("❌ CRASH CRÉATION JOUEUR", error);
-            // Si le pseudo Discord est déjà pris, on ajoute un suffixe aléatoire et on réessaie
-            if (error.code === 'P2002') { // Erreur d'unicité Prisma
-                 const suffix = Math.floor(Math.random() * 1000);
-                 return this.getPlayerData(userId, `${discordPseudo}_${suffix}`, discordAvatar);
+        console.log(`✨ CRÉATION AUTO: ${discordPseudo}`);
+        const finalPseudo = discordPseudo || `Pirate_${userId.substring(0, 5)}`;
+        joueur = await this.prisma.joueurs.create({
+            data: {
+                id: userId,
+                pseudo: finalPseudo, 
+                avatar_url: discordAvatar || null,
+                faction: null, // Pas de faction par défaut
+                points_carac: 5,
+                pv_actuel: 100,
+                energie_actuelle: 10,
+                combats_journaliers: 0,
+                dernier_reset_combats: now
             }
-            throw new InternalServerErrorException("Erreur création: " + error.message);
-        }
+        }) as any;
     }
 
-    if (!joueur) throw new InternalServerErrorException("Erreur critique: Joueur introuvable.");
+    if (!joueur) throw new InternalServerErrorException("Joueur introuvable.");
 
-    // --- RECONSTRUCTION EQUIPEMENT (Inchangé) ---
-    const equipementMap: any = { arme: null, tete: null, corps: null, bottes: null, bague: null, collier: null, navire: null };
+    // --- 3. LOGIQUE "LAZY UPDATE" (PV, ENERGIE, COMBATS) ---
     
-    // Le "?" permet d'éviter le crash si l'inventaire n'est pas chargé (cas création)
-    if (joueur.inventaire) {
-        joueur.inventaire.forEach(invItem => {
-            if (invItem.est_equipe && invItem.objets) {
-                const type = invItem.objets.type_equipement;
-                if (type === 'MAIN_DROITE') equipementMap.arme = invItem;
-                else if (type === 'TETE') equipementMap.tete = invItem;
-                else if (type === 'CORPS') equipementMap.corps = invItem;
-                else if (type === 'PIEDS') equipementMap.bottes = invItem;
-                else if (type === 'ACCESSOIRE_1') equipementMap.bague = invItem;
-                else if (type === 'ACCESSOIRE_2') equipementMap.collier = invItem;
-                else if (type === 'NAVIRE' || invItem.objets.categorie === 'Navire') equipementMap.navire = invItem;
-            }
+    // A. RESET COMBATS QUOTIDIENS VISUEL
+    const lastReset = joueur.dernier_reset_combats ? new Date(joueur.dernier_reset_combats) : new Date(0);
+    const isSameDay = lastReset.getDate() === now.getDate() && 
+                      lastReset.getMonth() === now.getMonth() && 
+                      lastReset.getFullYear() === now.getFullYear();
+
+    // Si on a changé de jour, on considère qu'il a fait 0 combat, sinon on prend la valeur BDD
+    let combatsFailsAujourdhui = isSameDay ? (joueur.combats_journaliers ?? 0) : 0;
+    let combatsRestants = Math.max(0, MAX_COMBATS_JOURNALIERS - combatsFailsAujourdhui);
+
+    // Si c'est un nouveau jour, on update la BDD tout de suite pour être propre (optionnel mais mieux)
+    if (!isSameDay) {
+        await this.prisma.joueurs.update({
+            where: { id: userId },
+            data: { combats_journaliers: 0, dernier_reset_combats: now }
         });
+        joueur.combats_journaliers = 0; // On met à jour l'objet local
     }
 
-    // --- CALCULS STATS & REGENERATION (Inchangé) ---
+    // B. REGEN PV
     const stats = this.calculatePlayerStats(joueur);
-    
     const lastPvUpdate = joueur.last_pv_update ? new Date(joueur.last_pv_update) : now;
-    const hoursElapsedPv = Math.floor((now.getTime() - lastPvUpdate.getTime()) / 3600000);
+    const hoursElapsedPv = (now.getTime() - lastPvUpdate.getTime()) / 3600000;
     let virtualPv = joueur.pv_actuel ?? 0;
     
-    if (hoursElapsedPv >= 1) {
-        const healAmount = hoursElapsedPv * 10;
-        virtualPv = Math.min((joueur.pv_actuel ?? 0) + healAmount, stats.pv_max_total);
+    if (hoursElapsedPv >= 0.1 && virtualPv < stats.pv_max_total) {
+        const healAmount = Math.floor(hoursElapsedPv * 10); // 10 PV par heure
+        virtualPv = Math.min(virtualPv + healAmount, stats.pv_max_total);
     }
 
-    const MAX_ENERGIE = 10;
-    const REGEN_TIME_MS = 3600000;
+    // C. REGEN ENERGIE
+    const MAX_ENERGIE = (joueur as any).energie_max || 10;
+    const REGEN_TIME_MS = 3600000; // 1h
     const lastEnergieUpdate = joueur.last_energie_update ? new Date(joueur.last_energie_update) : now;
     const currentStoredEnergie = joueur.energie_actuelle ?? MAX_ENERGIE;
     
@@ -564,33 +535,42 @@ async getPlayerData(userId: string, discordPseudo?: string, discordAvatar?: stri
         if (virtualEnergie >= MAX_ENERGIE) timeUntilNextRegenMs = 0;
     }
 
-    // --- INFO PROCHAIN NAVIRE (Inchangé) ---
-    let nextNavireData: any = null;
-    let niveauActuel = 1;
-    
-    if (equipementMap.navire) {
-        const currentRef = allNavires.find(n => n.nom === equipementMap.navire.objets.nom);
-        if (currentRef) niveauActuel = currentRef.niveau;
+    // --- 4. RECONSTRUCTION EQUIPEMENT & NAVIRE ---
+    const equipementMap: any = { arme: null, tete: null, corps: null, bottes: null, bague: null, collier: null, navire: null };
+    if (joueur.inventaire) {
+        joueur.inventaire.forEach(invItem => {
+            if (invItem.est_equipe && invItem.objets) {
+                const type = invItem.objets.type_equipement;
+                if (type === 'MAIN_DROITE') equipementMap.arme = invItem;
+                else if (type === 'TETE') equipementMap.tete = invItem;
+                else if (type === 'CORPS') equipementMap.corps = invItem;
+                else if (type === 'PIEDS') equipementMap.bottes = invItem;
+                else if (type === 'ACCESSOIRE_1') equipementMap.bague = invItem;
+                else if (type === 'ACCESSOIRE_2') equipementMap.collier = invItem;
+                else if (type === 'NAVIRE' || invItem.objets.categorie === 'Navire') equipementMap.navire = invItem;
+            }
+        });
     }
 
-    const nextShipRef = allNavires.find(n => n.niveau === niveauActuel + 1);
-
+    let nextNavireData: any = null;
+    let niveauNavireActuel = 1;
+    if (equipementMap.navire) {
+        const currentRef = allNavires.find(n => n.nom === equipementMap.navire.objets.nom);
+        if (currentRef) niveauNavireActuel = currentRef.niveau;
+    }
+    const nextShipRef = allNavires.find(n => n.niveau === niveauNavireActuel + 1);
     if (nextShipRef) {
         nextNavireData = {
             niveau: nextShipRef.niveau,
             nom: nextShipRef.nom,
-            description: nextShipRef.description,
             cout_berrys: Number(nextShipRef.prix_berrys),
-            image_url: nextShipRef.image_url,
             listeMateriaux: nextShipRef.cout_items.map(cout => ({
-                id: cout.objet.id,
-                nom: cout.objet.nom,
-                image_url: cout.objet.image_url,
-                qte_requise: cout.quantite
+                id: cout.objet.id, nom: cout.objet.nom, qte_requise: cout.quantite
             }))
         };
     }
 
+    // --- 5. RETOUR DONNÉES ---
     return {
         ...joueur,
         pv_actuel: virtualPv,
@@ -598,6 +578,11 @@ async getPlayerData(userId: string, discordPseudo?: string, discordAvatar?: stri
         statsTotales: stats,
         max_energie: MAX_ENERGIE,
         next_energie_in_ms: timeUntilNextRegenMs,
+        
+        // 🔥 INFO COMBATS CALCULÉE
+        combats_restants: combatsRestants,
+        combats_max: MAX_COMBATS_JOURNALIERS,
+        
         equipement: equipementMap,
         nextNavire: nextNavireData
     };

@@ -9,7 +9,13 @@ const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipa
     const pvPercent = Math.floor(((joueur.pv_actuel || 0) / pvMaxCalcul) * 100);
     const estBlesse = pvPercent < 100;
     const rankPvP = getRankInfo(joueur.elo_pvp || 0);
-    const availableCombats = 10 - (joueur.combats_journaliers || 0);
+
+    // 🔥 MODIFICATION ICI : On utilise la valeur du Backend (lazy reset)
+    // Si la donnée n'est pas encore là (chargement), on fallback sur 20 par défaut
+    const maxCombats = joueur.combats_max || 20;
+    const availableCombats = joueur.combats_restants !== undefined 
+        ? joueur.combats_restants 
+        : Math.max(0, maxCombats - (joueur.combats_journaliers || 0));
     
     // --- LOGIQUE DE VERROUILLAGE ---
     const LEVEL_REQ_QUETES = 10;
@@ -132,7 +138,12 @@ const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipa
                         <div className={`w-16 h-16 rounded-2xl bg-red-500/10 flex items-center justify-center text-3xl text-red-400 group-hover:scale-110 transition-transform ${isAreneLocked ? 'blur-sm' : ''}`}>⚔️</div>
                         <div className={isAreneLocked ? 'blur-sm opacity-50' : ''}>
                             <h4 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest mb-1">Arène PvP</h4>
-                            <p className="text-2xl font-black text-white">{availableCombats} combats restants</p>
+                            
+                            {/* 🔥 MODIFICATION AFFICHAGE COMBATS */}
+                            <p className="text-2xl font-black text-white">
+                                {availableCombats} / {maxCombats} combats
+                            </p>
+                            
                             <p className="text-xs font-bold text-red-400 mt-1 group-hover:translate-x-1 transition-transform">Combattre →</p>
                         </div>
                     </div>
