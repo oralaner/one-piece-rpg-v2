@@ -240,6 +240,9 @@ const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipa
                         </div>
                     </div>
 
+                
+
+                </div>
 
                 {/* COLONNE DROITE (4/12) : QUÊTES */}
                 <div className="lg:col-span-4 h-full min-h-[400px]">
