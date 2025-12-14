@@ -1,6 +1,7 @@
 import React from 'react';
 import { formatChronoLong, getRankInfo } from '../utils/gameUtils';
 import DailyQuestsWidget from './DailyQuestsWidget';
+import EnergyBar from './EnergyBar'; // ✅ On importe ton composant EnergyBar
 
 const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipages, onNavigate, theme, monEquipage, membresEquipage }) => { 
     
@@ -10,12 +11,9 @@ const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipa
     const estBlesse = pvPercent < 100;
     const rankPvP = getRankInfo(joueur.elo_pvp || 0);
 
-    // 🔥 MODIFICATION ICI : On utilise la valeur du Backend (lazy reset)
-    // Si la donnée n'est pas encore là (chargement), on fallback sur 20 par défaut
-    const maxCombats = joueur.combats_max || 20;
-    const availableCombats = joueur.combats_restants !== undefined 
-        ? joueur.combats_restants 
-        : Math.max(0, maxCombats - (joueur.combats_journaliers || 0));
+    // 🔥 CORRECTION ICI : On se base STRICTEMENT sur l'énergie
+    const maxEnergie = joueur.max_energie || 10;
+    const energieActuelle = joueur.energie_actuelle ?? 0;
     
     // --- LOGIQUE DE VERROUILLAGE ---
     const LEVEL_REQ_QUETES = 10;
@@ -23,7 +21,7 @@ const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipa
     const LEVEL_REQ_CLASSEMENT = 10;
 
     // Conditions spécifiques
-    const isExpeditionLocked = (joueur.chapitre_actuel || 1) < 2; // Bloqué tant que Chapitre 1
+    const isExpeditionLocked = (joueur.chapitre_actuel || 1) < 2; 
     const isQuestsLocked = (joueur.niveau || 1) < LEVEL_REQ_QUETES;
     const isAreneLocked = (joueur.niveau || 1) < LEVEL_REQ_ARENE;
     const isRankLocked = (joueur.niveau || 1) < LEVEL_REQ_CLASSEMENT;
@@ -68,7 +66,7 @@ const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipa
                     {joueur.pseudo}
                 </h1>
                 
-                {/* BANDEAU DES RANGS (Flouté si bas niveau) */}
+                {/* BANDEAU DES RANGS */}
                 <div className={`flex flex-wrap justify-center gap-2 md:gap-4 mb-4 transition-all duration-500 ${isRankLocked ? 'opacity-20 blur-sm grayscale pointer-events-none select-none' : ''}`}>
                     <div className="bg-black/40 border border-white/10 px-3 py-1.5 rounded-lg flex items-center gap-2">
                         <span className="text-lg">💪</span>
@@ -96,7 +94,7 @@ const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipa
                 {/* COLONNE GAUCHE (2/3) */}
                 <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
                     
-                    {/* BLOC 1 : ÉTAT PHYSIQUE (Toujours Ouvert) */}
+                    {/* BLOC 1 : ÉTAT PHYSIQUE */}
                     <div onClick={() => onNavigate('inventaire')} className="bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 p-6 rounded-2xl flex items-center gap-5 cursor-pointer group transition-all duration-300 hover:shadow-lg hover:shadow-emerald-900/20 relative">
                         <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-3xl text-emerald-400 group-hover:scale-110 transition-transform">💚</div>
                         <div>
@@ -106,7 +104,7 @@ const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipa
                         </div>
                     </div>
 
-                    {/* BLOC 2 : EXPÉDITIONS (Bloqué Chap < 2) */}
+                    {/* BLOC 2 : EXPÉDITIONS */}
                     <div className="relative bg-slate-800/50 border border-slate-700/50 p-6 rounded-2xl flex items-center gap-5 transition-all duration-300 group hover:shadow-lg hover:shadow-indigo-900/20 cursor-pointer"
                          onClick={() => !isExpeditionLocked && onNavigate('expeditions')}>
                         
@@ -129,26 +127,36 @@ const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipa
                         </div>
                     </div>
 
-                    {/* BLOC 3 : ARÈNE (Bloqué Niv < 5) */}
+                    {/* BLOC 3 : ARÈNE (Avec Energie) */}
                     <div className="relative bg-slate-800/50 border border-slate-700/50 p-6 rounded-2xl flex items-center gap-5 transition-all duration-300 group hover:shadow-lg hover:shadow-red-900/20 cursor-pointer"
                          onClick={() => !isAreneLocked && onNavigate('arene')}>
                         
                         {isAreneLocked && <LockedOverlay label={`Niveau ${LEVEL_REQ_ARENE} Requis`} />}
 
                         <div className={`w-16 h-16 rounded-2xl bg-red-500/10 flex items-center justify-center text-3xl text-red-400 group-hover:scale-110 transition-transform ${isAreneLocked ? 'blur-sm' : ''}`}>⚔️</div>
-                        <div className={isAreneLocked ? 'blur-sm opacity-50' : ''}>
+                        <div className={`flex-1 ${isAreneLocked ? 'blur-sm opacity-50' : ''}`}>
                             <h4 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest mb-1">Arène PvP</h4>
                             
-                            {/* 🔥 MODIFICATION AFFICHAGE COMBATS */}
-                            <p className="text-2xl font-black text-white">
-                                {availableCombats} / {maxCombats} combats
-                            </p>
+                            {/* 🔥 MODIFICATION : Utilisation de EnergyBar OU Affichage Textuel Energie */}
+                            <div className="flex flex-col items-start">
+                                {/* Option A : Texte Simple */}
+                                {/* <p className="text-2xl font-black text-white">{energieActuelle} / {maxEnergie} ⚡</p> */}
+
+                                {/* Option B : Barre d'énergie intégrée (Plus classe) */}
+                                <div className="w-full max-w-[140px] mb-1">
+                                    <EnergyBar 
+                                        current={energieActuelle} 
+                                        max={maxEnergie} 
+                                        lastUpdate={joueur.last_energie_update} 
+                                    />
+                                </div>
+                            </div>
                             
                             <p className="text-xs font-bold text-red-400 mt-1 group-hover:translate-x-1 transition-transform">Combattre →</p>
                         </div>
                     </div>
 
-                    {/* BLOC 4 : RANG (Bloqué Niv < 10) */}
+                    {/* BLOC 4 : RANG */}
                     <div className="relative bg-slate-800/50 border border-slate-700/50 p-6 rounded-2xl flex items-center gap-5 transition-all duration-300 group hover:shadow-lg hover:shadow-yellow-900/20 cursor-pointer"
                          onClick={() => !isRankLocked && onNavigate('classement')}>
                         
@@ -165,7 +173,7 @@ const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipa
                     </div>
                 </div>
 
-                {/* COLONNE DROITE (1/3) : QUÊTES QUOTIDIENNES (Bloqué Niv < 3) */}
+                {/* COLONNE DROITE (1/3) : QUÊTES QUOTIDIENNES */}
                 <div className="lg:col-span-1 relative">
                     {isQuestsLocked && (
                         <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm z-20 rounded-2xl border border-white/10 flex flex-col items-center justify-center select-none">
@@ -175,7 +183,6 @@ const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipa
                         </div>
                     )}
                     
-                    {/* Contenu flouté si bloqué */}
                     <div className={isQuestsLocked ? 'opacity-20 blur-sm pointer-events-none h-full' : 'h-full'}>
                         <DailyQuestsWidget 
                             userId={joueur.id} 
