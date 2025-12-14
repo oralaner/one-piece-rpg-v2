@@ -1198,7 +1198,7 @@ async sellItem(dto: SellItemDto) {
   }
 
 // =================================================================
-  // ⚔️ JOUER UN TOUR (CORRIGÉ : Prise en compte du Stuff Adversaire)
+  // ⚔️ JOUER UN TOUR (AVEC SYSTÈME ELO DYNAMIQUE)
   // =================================================================
   async playTurn(dto: PlayTurnDto) {
     const combat = await this.prisma.combats.findUnique({ where: { id: dto.combatId } });
@@ -1210,17 +1210,16 @@ async sellItem(dto: SellItemDto) {
         where: { id: combat.joueur_id! },
         include: {
             inventaire: { include: { objets: true } }, 
-            // On inclut les relations directes au cas où, mais inventaire suffit pour calculatePlayerStats
             equip_tete: true, equip_corps: true, equip_bottes: true,
             equip_bague: true, equip_collier: true
         }
     });
 
-    // 🔥 CORRECTION ICI : On charge aussi l'équipement de l'adversaire !
+    // 2. Charger l'adversaire AVEC son équipement
     const adversaire = await this.prisma.joueurs.findUnique({ 
         where: { id: combat.adversaire_id! },
         include: {
-            inventaire: { include: { objets: true } } // Indispensable pour les stats
+            inventaire: { include: { objets: true } }
         }
     });
 
@@ -1230,38 +1229,29 @@ async sellItem(dto: SellItemDto) {
     if (!skill) throw new BadRequestException("Compétence inconnue.");
 
     // =================================================================
-    // 📊 CALCUL DES STATS TOTALES (JOUEUR & ADVERSAIRE)
+    // 📊 CALCUL DES STATS TOTALES
     // =================================================================
-    
-    // Stats du Joueur
     const statsAtk = this.calculatePlayerStats(attaquant);
-
-    // Stats de l'Adversaire (Bot ou Joueur)
-    // Par défaut, on prend les stats calculées (Stuff inclus)
     const statsAdv = this.calculatePlayerStats(adversaire);
     
     let forceBot = statsAdv.force;
     let defenseBot = statsAdv.defense;
 
-    // Si c'est un BOT (PNJ), on applique le scaling par niveau si ses stats sont faibles
+    // Boost PNJ (Bots)
     if (adversaire.is_bot) {
         const niv = adversaire.niveau ?? 1;
-        // Si le bot n'a pas de stats définies manuellement en BDD, on boost
         if (forceBot < 5) forceBot = 10 + (niv * 4); 
         if (defenseBot < 5) defenseBot = 5 + (niv * 2);
     }
 
     // =================================================================
-    // 🛡️ DÉTECTION DU TYPE DE LA COMPÉTENCE
+    // 🛡️ DÉTECTION SKILL (Inchangé)
     // =================================================================
-    
     const armeEquipee = attaquant.inventaire.find(i => i.est_equipe && i.objets.type_equipement === 'MAIN_DROITE');
     const nomArme = (armeEquipee?.objets?.nom || "").toUpperCase();
     const nomSkill = skill.nom.toUpperCase();
     const typeSkill = (skill.type_degats || "").toUpperCase();
 
-    // ... (Ton code de vérification Arme/Skill reste inchangé ici) ...
-    // Je remets le bloc complet pour éviter les erreurs de copier-coller
     const KW_SKILL_SWORD = ["COUPE", "ESTOCADE", "LAME", "SABRE", "CHASSEUR", "TOURBILLON", "CHANT", "TROIS", "KAMUSARI", "SLASH", "ZORO", "ONIGIRI"];
     const KW_ITEM_SWORD  = ["SABRE", "ÉPÉE", "EPEE", "KATANA", "LAME", "DAGUE", "COUTEAU", "YORU", "WADO", "KITETSU"];
     const KW_SKILL_GUN   = ["TIR", "BALLE", "RAFALE", "CANON", "SNIPER", "PLOMB", "EXPLOSIVE", "MOUSQUET", "PRÉCISION", "MITRAIL"];
@@ -1270,91 +1260,82 @@ async sellItem(dto: SellItemDto) {
 
     let skillCategory = 'PHYSIQUE';
 
-    if (FRUIT_TYPES.includes(typeSkill)) {
-        skillCategory = 'FRUIT';
-    }
+    if (FRUIT_TYPES.includes(typeSkill)) skillCategory = 'FRUIT';
     else if (KW_SKILL_SWORD.some(k => nomSkill.includes(k))) {
         skillCategory = 'SABRE';
-        const hasSword = KW_ITEM_SWORD.some(k => nomArme.includes(k));
-        if (!hasSword) throw new BadRequestException(`🚫 Il te faut une Épée/Sabre pour utiliser "${skill.nom}" !`);
+        if (!KW_ITEM_SWORD.some(k => nomArme.includes(k))) throw new BadRequestException(`🚫 Il te faut une Épée/Sabre pour utiliser "${skill.nom}" !`);
     }
     else if (typeSkill === 'DISTANCE' || KW_SKILL_GUN.some(k => nomSkill.includes(k))) {
         skillCategory = 'DISTANCE';
-        const hasGun = KW_ITEM_GUN.some(k => nomArme.includes(k));
-        if (nomSkill.includes("PIERRE")) { /* Passe */ } 
-        else if (!hasGun) {
-            throw new BadRequestException(`🚫 Il te faut une Arme à distance pour utiliser "${skill.nom}" !`);
-        }
+        if (!nomSkill.includes("PIERRE") && !KW_ITEM_GUN.some(k => nomArme.includes(k))) throw new BadRequestException(`🚫 Il te faut une Arme à distance pour utiliser "${skill.nom}" !`);
     }
 
     // =================================================================
-    // 💥 TOUR JOUEUR : CALCUL DES DÉGÂTS
+    // 💥 CALCUL DÉGÂTS JOUEUR
     // =================================================================
-
     let statUtilisee = statsAtk.force; 
     if (skillCategory === 'DISTANCE') statUtilisee = statsAtk.agilite;
     if (skillCategory === 'FRUIT') statUtilisee = statsAtk.intelligence * 1.5;
 
     const skillPower = skill.puissance ?? 10;
-
-    // Dégâts Joueur vs Défense Totale Adversaire
     let degatsJoueur = Math.floor( (statUtilisee + skillPower) * (0.9 + Math.random() * 0.2) ) - Math.floor(defenseBot / 2);
     if (degatsJoueur < 1) degatsJoueur = 1;
 
-    // Critique
     const critChance = statsAtk.chance * 0.1;
-    if (Math.random() * 100 < critChance) {
-        degatsJoueur = Math.floor(degatsJoueur * 1.5);
-    }
+    if (Math.random() * 100 < critChance) degatsJoueur = Math.floor(degatsJoueur * 1.5);
 
-    // Mise à jour PV
     let pvAdvRestant = (combat.pv_adversaire_actuel ?? 100) - degatsJoueur;
     if (pvAdvRestant < 0) pvAdvRestant = 0;
 
     const logJ = `Tu utilises ${skill.nom} et infliges ${degatsJoueur} dégâts !`;
 
+    // -----------------------------------------------------------
+    // 🏆 HELPER ELO : Calcul dynamique (Risk vs Reward)
+    // -----------------------------------------------------------
+    const calculateEloChange = (joueurElo: number, advElo: number, isVictory: boolean) => {
+        const K = 32; // Facteur d'impact (standard Elo)
+        const expectedScore = 1 / (1 + Math.pow(10, (advElo - joueurElo) / 400));
+        const actualScore = isVictory ? 1 : 0;
+        
+        let change = Math.round(K * (actualScore - expectedScore));
+        
+        // Bornes pour éviter les abus ou la stagnation
+        if (isVictory) change = Math.max(5, Math.min(30, change)); // Min +5, Max +30
+        else change = Math.max(-30, Math.min(-5, change));         // Min -30 (grosse perte), Max -5 (petite perte)
+
+        return change;
+    };
+
     // --- VICTOIRE JOUEUR ---
     if (pvAdvRestant <= 0) {
-        // ... (Ton bloc victoire reste inchangé) ...
-        // Je le remets pour être complet
         const gainXp = 50 * (adversaire.niveau ?? 1);
         const gainBerrys = 100 * (adversaire.niveau ?? 1);
-        const gainElo = adversaire.is_bot ? 0 : 15;
+        
+        // ⚡ CALCUL ELO DYNAMIQUE (Uniquement si adversaire n'est pas un bot PVE)
+        // Si c'est un BOT, on gagne 0 Elo (ou un petit montant fixe si tu veux du PVE classé)
+        let gainElo = 0;
+        let perteEloAdv = 0;
 
-        let newXp = (attaquant.xp || 0) + gainXp;
-        let newLevel = attaquant.niveau || 1;
-        let levelsGained = 0;
-
-        while (newXp >= newLevel * 1000) {
-            newXp -= newLevel * 1000;
-            newLevel++;                
-            levelsGained++;
+        if (!adversaire.is_bot) {
+            gainElo = calculateEloChange(attaquant.elo_pvp ?? 1000, adversaire.elo_pvp ?? 1000, true);
+            // L'adversaire perd ce que le joueur gagne (système à somme nulle ou presque)
+            perteEloAdv = -gainElo; 
         }
 
-        const updateData: any = {
-            xp: newXp,
-            niveau: newLevel,
-            berrys: { increment: gainBerrys },
-            victoires: { increment: 1 },
-            victoires_pve: adversaire.is_bot ? { increment: 1 } : undefined,
-            victoires_pvp: !adversaire.is_bot ? { increment: 1 } : undefined,
-            elo_pvp: { increment: gainElo }
-        };
+        const { updateData, levelsGained, newLevel } = this.calculateLevelUp(attaquant, gainXp);
 
-        let finalLog = "VICTOIRE !";
-        if (levelsGained > 0) {
-            finalLog += ` NIVEAU UP ! (Niv ${newLevel})`;
-            const bonusStat = levelsGained * 5; // Correction : 5 pts par niveau
-            updateData.points_carac = { increment: bonusStat };
-            
-            // Soin Level Up
-            const bonusPvFromLevel = levelsGained * 20; // Approx
-            const newPvMax = statsAtk.pv_max_total + bonusPvFromLevel; 
-            updateData.pv_actuel = newPvMax;
-            updateData.energie_actuelle = 10;
-        }
+        updateData.berrys = { increment: gainBerrys };
+        updateData.victoires = { increment: 1 };
+        updateData.elo_pvp = { increment: gainElo };
+        
+        if (adversaire.is_bot) updateData.victoires_pve = { increment: 1 };
+        else updateData.victoires_pvp = { increment: 1 };
 
-        await this.prisma.$transaction([
+        let finalLog = `VICTOIRE ! (+${gainElo} LP)`;
+        if (levelsGained > 0) finalLog += ` NIVEAU UP ! (Niv ${newLevel})`;
+
+        // Transaction : On met à jour le vainqueur, le combat, ET le perdant (Elo)
+        const transactionOps: any[] = [
             this.prisma.combats.update({
                 where: { id: combat.id },
                 data: { 
@@ -1368,10 +1349,27 @@ async sellItem(dto: SellItemDto) {
                 where: { id: attaquant.id },
                 data: updateData
             })
-        ]);
+        ];
+
+        // Si PVP : On retire des points au perdant !
+        if (!adversaire.is_bot) {
+            transactionOps.push(
+                this.prisma.joueurs.update({
+                    where: { id: adversaire.id },
+                    data: { 
+                        elo_pvp: { increment: perteEloAdv }, // perteEloAdv est négatif
+                        defaites_pvp: { increment: 1 },
+                        defaites: { increment: 1 }
+                    }
+                })
+            );
+        }
+
+        await this.prisma.$transaction(transactionOps);
         await this.checkAndUnlockTitles(dto.userId);
         await this.clearCache(dto.userId);
         this.updateQuestProgress(dto.userId, 'ARENA_FIGHT', 1);
+
         return { 
             etat: 'VICTOIRE', 
             log_joueur: logJ, 
@@ -1388,10 +1386,6 @@ async sellItem(dto: SellItemDto) {
     // =================================================================
     // 🤖 TOUR ADVERSAIRE (IA)
     // =================================================================
-    
-    // 🔥 ICI C'EST LE FIX : On utilise forceBot qui contient maintenant le BONUS D'ARME
-    // (Calculé tout en haut via statsAdv.force)
-    
     let degatsIA = Math.floor( forceBot * (0.8 + Math.random() * 0.4) ) - Math.floor(statsAtk.defense / 3);
     if (degatsIA < 1) degatsIA = 1;
 
@@ -1400,31 +1394,35 @@ async sellItem(dto: SellItemDto) {
 
     const logIA = `${adversaire.pseudo} attaque et t'inflige ${degatsIA} dégâts !`;
 
-    // --- DÉFAITE ---
+    // --- DÉFAITE JOUEUR ---
     if (pvJoueurRestant <= 0) {
         const perteBerrys = Math.floor((attaquant.berrys || 0) * 0.50);
-        const gainXpConsolation = 10; // Tu peux mettre 0 si tu ne veux pas d'XP en cas de défaite
+        const gainXpConsolation = 10;
+        
+        // ⚡ CALCUL ELO DÉFAITE
+        let perteElo = 0;
+        let gainEloAdv = 0;
 
-        // 🔥 1. CALCUL LEVEL UP (Même pour 10 XP, c'est obligatoire pour éviter le bug)
+        if (!adversaire.is_bot) {
+            perteElo = calculateEloChange(attaquant.elo_pvp ?? 1000, adversaire.elo_pvp ?? 1000, false);
+            // perteElo est déjà négatif (ex: -12)
+            gainEloAdv = Math.abs(perteElo); 
+        }
+
         const { updateData, levelsGained, newLevel } = this.calculateLevelUp(attaquant, gainXpConsolation);
 
-        // 🔥 2. ON AJOUTE LES CONSÉQUENCES DE LA DÉFAITE À L'OBJET updateData
         updateData.defaites = { increment: 1 };
-        updateData.pv_actuel = 0; // On force 0 PV même si le level up voulait soigner
-        updateData.berrys = { decrement: perteBerrys }; // On applique la perte d'argent
+        updateData.pv_actuel = 0;
+        updateData.berrys = { decrement: perteBerrys };
+        updateData.elo_pvp = { increment: perteElo }; // On applique la perte
         
-        // Gestion PVP / PVE
         if (adversaire.is_bot) updateData.defaites_pve = { increment: 1 };
         else updateData.defaites_pvp = { increment: 1 };
 
-        // Construction du message
-        let msgDefaite = `DÉFAITE... Tu t'effondres et perds ${perteBerrys.toLocaleString()} ฿.`;
-        if (levelsGained > 0) {
-            msgDefaite += ` (Mais l'expérience t'a endurci : NIVEAU ${newLevel} !)`;
-        }
+        let msgDefaite = `DÉFAITE... (${perteElo} LP). Tu perds ${perteBerrys.toLocaleString()} ฿.`;
+        if (levelsGained > 0) msgDefaite += ` (Mais l'XP t'a endurci : NIVEAU ${newLevel} !)`;
 
-        // 🔥 3. TRANSACTION
-        await this.prisma.$transaction([
+        const transactionOpsDefaite: any[] = [
             this.prisma.combats.update({
                 where: { id: combat.id },
                 data: { 
@@ -1437,13 +1435,26 @@ async sellItem(dto: SellItemDto) {
             }),
             this.prisma.joueurs.update({ 
                 where: { id: attaquant.id }, 
-                data: updateData // On utilise l'objet calculé et fusionné
+                data: updateData 
             })
-        ]);
+        ];
 
-        // 🔥 4. VÉRIFICATION DES TITRES (Ex: "Roi de la lose")
+        // Si PVP : Le vainqueur (l'adversaire) gagne des points !
+        if (!adversaire.is_bot) {
+            transactionOpsDefaite.push(
+                this.prisma.joueurs.update({
+                    where: { id: adversaire.id },
+                    data: { 
+                        elo_pvp: { increment: gainEloAdv }, 
+                        victoires_pvp: { increment: 1 },
+                        victoires: { increment: 1 }
+                    }
+                })
+            );
+        }
+
+        await this.prisma.$transaction(transactionOpsDefaite);
         await this.checkAndUnlockTitles(dto.userId);
-
         await this.clearCache(dto.userId);
         this.updateQuestProgress(dto.userId, 'ARENA_FIGHT', 1);
 
