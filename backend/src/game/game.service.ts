@@ -439,11 +439,10 @@ async getDailyQuests(userId: string) {
   }
 
 // =================================================================
-  // 1. CHARGEMENT DU PROFIL (OPTIMISÉ AVEC RESET COMBATS)
+  // 1. CHARGEMENT DU PROFIL (VERSION FINALE : ENERGIE & REGEN)
   // =================================================================
   async getPlayerData(userId: string, discordPseudo?: string, discordAvatar?: string) {
     const now = new Date();
-    const MAX_COMBATS_JOURNALIERS = 20; // 👈 Règle ici ton max de combats par jour
 
     // 1. Recherche du joueur
     let [joueur, allNavires] = await Promise.all([
@@ -452,7 +451,10 @@ async getDailyQuests(userId: string) {
             include: {
                 inventaire: { include: { objets: true } },
                 equipage: true,
-                joueur_titres: { include: { titres_ref: true } }
+                joueur_titres: { include: { titres_ref: true } },
+                // On inclut l'équipement pour les stats
+                equip_arme: true, equip_tete: true, equip_corps: true, 
+                equip_bottes: true, equip_bague: true, equip_collier: true
             }
         }),
         this.prisma.navires_ref.findMany({ 
@@ -460,7 +462,7 @@ async getDailyQuests(userId: string) {
         })
     ]);
 
-    // 2. CRÉATION AUTOMATIQUE (Si nouveau)
+    // 2. CRÉATION AUTOMATIQUE
     if (!joueur) {
         console.log(`✨ CRÉATION AUTO: ${discordPseudo}`);
         const finalPseudo = discordPseudo || `Pirate_${userId.substring(0, 5)}`;
@@ -469,53 +471,57 @@ async getDailyQuests(userId: string) {
                 id: userId,
                 pseudo: finalPseudo, 
                 avatar_url: discordAvatar || null,
-                faction: null, // Pas de faction par défaut
+                faction: null,
                 points_carac: 5,
                 pv_actuel: 100,
                 energie_actuelle: 10,
                 combats_journaliers: 0,
-                dernier_reset_combats: now
+                dernier_reset_combats: now,
+                xp: 0,
+                niveau: 1
             }
         }) as any;
     }
 
     if (!joueur) throw new InternalServerErrorException("Joueur introuvable.");
 
-    // --- 3. LOGIQUE "LAZY UPDATE" (PV, ENERGIE, COMBATS) ---
+    // --- 3. LOGIQUE "LAZY UPDATE" (Mise à jour visuelle sans écriture BDD systématique) ---
     
-    // A. RESET COMBATS QUOTIDIENS VISUEL
+    // A. RESET JOURNALIER (Pour les stats/quêtes, pas pour bloquer)
     const lastReset = joueur.dernier_reset_combats ? new Date(joueur.dernier_reset_combats) : new Date(0);
     const isSameDay = lastReset.getDate() === now.getDate() && 
                       lastReset.getMonth() === now.getMonth() && 
                       lastReset.getFullYear() === now.getFullYear();
 
-    // Si on a changé de jour, on considère qu'il a fait 0 combat, sinon on prend la valeur BDD
-    let combatsFailsAujourdhui = isSameDay ? (joueur.combats_journaliers ?? 0) : 0;
-    let combatsRestants = Math.max(0, MAX_COMBATS_JOURNALIERS - combatsFailsAujourdhui);
-
-    // Si c'est un nouveau jour, on update la BDD tout de suite pour être propre (optionnel mais mieux)
+    // Si on a changé de jour, on remet le compteur de combats faits aujourd'hui à 0
     if (!isSameDay) {
+        // On update en tâche de fond (fire & forget) ou on attend
+        // Ici on le fait juste visuellement pour l'instant, l'écriture se fera à la prochaine action
+        joueur.combats_journaliers = 0; 
+        
+        // Optionnel : Forcer l'update en BDD maintenant pour être clean
         await this.prisma.joueurs.update({
             where: { id: userId },
             data: { combats_journaliers: 0, dernier_reset_combats: now }
         });
-        joueur.combats_journaliers = 0; // On met à jour l'objet local
     }
 
-    // B. REGEN PV
+    // B. REGEN PV (10 PV / Heure)
     const stats = this.calculatePlayerStats(joueur);
     const lastPvUpdate = joueur.last_pv_update ? new Date(joueur.last_pv_update) : now;
-    const hoursElapsedPv = (now.getTime() - lastPvUpdate.getTime()) / 3600000;
+    const hoursElapsedPv = (now.getTime() - lastPvUpdate.getTime()) / 3600000; // Heures décimales
     let virtualPv = joueur.pv_actuel ?? 0;
     
+    // On ne regen que si blessé et si assez de temps passé (ex: > 6 min)
     if (hoursElapsedPv >= 0.1 && virtualPv < stats.pv_max_total) {
-        const healAmount = Math.floor(hoursElapsedPv * 10); // 10 PV par heure
+        const healAmount = Math.floor(hoursElapsedPv * 10); 
         virtualPv = Math.min(virtualPv + healAmount, stats.pv_max_total);
     }
 
-    // C. REGEN ENERGIE
+    // C. REGEN ENERGIE (1 Energie / Heure)
     const MAX_ENERGIE = (joueur as any).energie_max || 10;
-    const REGEN_TIME_MS = 3600000; // 1h
+    const REGEN_TIME_MS = 3600000; // 1 heure en ms (3 600 000)
+    
     const lastEnergieUpdate = joueur.last_energie_update ? new Date(joueur.last_energie_update) : now;
     const currentStoredEnergie = joueur.energie_actuelle ?? MAX_ENERGIE;
     
@@ -528,6 +534,7 @@ async getDailyQuests(userId: string) {
         
         virtualEnergie = Math.min(currentStoredEnergie + energyGained, MAX_ENERGIE);
         
+        // Calcul du temps restant pour le prochain point
         const msUsedForGain = energyGained * REGEN_TIME_MS;
         const msRestant = msElapsed - msUsedForGain;
         timeUntilNextRegenMs = Math.max(0, REGEN_TIME_MS - msRestant);
@@ -537,21 +544,22 @@ async getDailyQuests(userId: string) {
 
     // --- 4. RECONSTRUCTION EQUIPEMENT & NAVIRE ---
     const equipementMap: any = { arme: null, tete: null, corps: null, bottes: null, bague: null, collier: null, navire: null };
+    
+    // Mapping manuel ou via relation directe (selon ce qui est chargé)
+    if (joueur.equip_arme) equipementMap.arme = { objets: joueur.equip_arme };
+    if (joueur.equip_tete) equipementMap.tete = { objets: joueur.equip_tete };
+    if (joueur.equip_corps) equipementMap.corps = { objets: joueur.equip_corps };
+    if (joueur.equip_bottes) equipementMap.bottes = { objets: joueur.equip_bottes };
+    if (joueur.equip_bague) equipementMap.bague = { objets: joueur.equip_bague };
+    if (joueur.equip_collier) equipementMap.collier = { objets: joueur.equip_collier };
+    
+    // Gestion Navire (souvent dans l'inventaire en tant qu'objet 'NAVIRE')
     if (joueur.inventaire) {
-        joueur.inventaire.forEach(invItem => {
-            if (invItem.est_equipe && invItem.objets) {
-                const type = invItem.objets.type_equipement;
-                if (type === 'MAIN_DROITE') equipementMap.arme = invItem;
-                else if (type === 'TETE') equipementMap.tete = invItem;
-                else if (type === 'CORPS') equipementMap.corps = invItem;
-                else if (type === 'PIEDS') equipementMap.bottes = invItem;
-                else if (type === 'ACCESSOIRE_1') equipementMap.bague = invItem;
-                else if (type === 'ACCESSOIRE_2') equipementMap.collier = invItem;
-                else if (type === 'NAVIRE' || invItem.objets.categorie === 'Navire') equipementMap.navire = invItem;
-            }
-        });
+        const navireItem = joueur.inventaire.find(i => i.est_equipe && i.objets.type_equipement === 'NAVIRE');
+        if (navireItem) equipementMap.navire = navireItem;
     }
 
+    // Info Prochain Navire
     let nextNavireData: any = null;
     let niveauNavireActuel = 1;
     if (equipementMap.navire) {
@@ -574,14 +582,11 @@ async getDailyQuests(userId: string) {
     return {
         ...joueur,
         pv_actuel: virtualPv,
-        energie_actuelle: virtualEnergie,
+        energie_actuelle: virtualEnergie, // On renvoie l'énergie calculée
         statsTotales: stats,
-        max_energie: MAX_ENERGIE,
-        next_energie_in_ms: timeUntilNextRegenMs,
         
-        // 🔥 INFO COMBATS CALCULÉE
-        combats_restants: combatsRestants,
-        combats_max: MAX_COMBATS_JOURNALIERS,
+        max_energie: MAX_ENERGIE,
+        next_energie_in_ms: timeUntilNextRegenMs, // Pour le chrono frontend
         
         equipement: equipementMap,
         nextNavire: nextNavireData
