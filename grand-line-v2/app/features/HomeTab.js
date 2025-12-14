@@ -1,7 +1,7 @@
 import React from 'react';
 import { formatChronoLong, getRankInfo } from '../utils/gameUtils';
 import DailyQuestsWidget from './DailyQuestsWidget';
-import EnergyBar from './EnergyBar';
+import EnergyBar from '../components/EnergyBar'; 
 
 const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipages, onNavigate, theme, monEquipage, membresEquipage }) => { 
     
