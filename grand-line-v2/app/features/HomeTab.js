@@ -129,7 +129,7 @@ const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipa
             </div>
 
             {/* 2. GRID DASHBOARD */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-8 gap-6">
                 
                 {/* COLONNE PRINCIPALE (8/12) */}
                 <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-fr">
