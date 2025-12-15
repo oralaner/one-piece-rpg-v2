@@ -1094,15 +1094,14 @@ async sellItem(dto: SellItemDto) {
         }
 
         // 2. Récupération des données (Attaquant + Défenseur)
-        // On utilise getPlayerData pour l'attaquant
         const attaquant: any = await this.getPlayerData(dto.userId);
         
-        // 🔥 MODIFICATION ICI : On charge l'inventaire du défenseur pour calculer ses stats
+        // On charge l'inventaire du défenseur pour calculer ses stats
         const defenseur = await this.prisma.joueurs.findUnique({ 
             where: { id: dto.targetId },
             include: { 
                 inventaire: { 
-                    where: { est_equipe: true }, // On ne charge que le stuff équipé, ça suffit
+                    where: { est_equipe: true }, 
                     include: { objets: true } 
                 } 
             }
@@ -1119,7 +1118,7 @@ async sellItem(dto: SellItemDto) {
              throw new BadRequestException(`Tu es épuisé ! Attends un peu (Energie: ${energieActuelle}/${attaquant.energie_max ?? 10}).`);
         }
 
-        // 4. Vérification PV Attaquant (Lui doit être en forme)
+        // 4. Vérification PV Attaquant
         const pvAtk = attaquant.pv_actuel ?? 100;
         if (pvAtk <= 0) throw new BadRequestException("Tu es K.O., soigne-toi d'abord !");
 
@@ -1127,23 +1126,19 @@ async sellItem(dto: SellItemDto) {
         let pvAdversaireStart = 100;
 
         if (defenseur.is_bot) {
-            // --- LOGIQUE BOT (Scaling) ---
             if (defenseur.pv_max_base && defenseur.pv_max_base > 0) {
                 pvAdversaireStart = defenseur.pv_max_base;
             } else {
                 const niveauBot = defenseur.niveau ?? 1;
-                pvAdversaireStart = 100 + (niveauBot * 50); // Formule par défaut
+                pvAdversaireStart = 100 + (niveauBot * 50);
             }
         } else {
-            // --- LOGIQUE JOUEUR (PVP) ---
             // 🔥 ON CALCULE SES STATS MAX (Vitalité + Stuff)
             const statsDefenseur = this.calculatePlayerStats(defenseur);
-            
-            // On démarre le combat avec ses PV MAX, peu importe son état actuel
             pvAdversaireStart = statsDefenseur.pv_max_total;
         }
 
-        // 6. TRANSACTION ATOMIQUE (Energie + Création Combat)
+        // 6. TRANSACTION ATOMIQUE
         const result = await this.prisma.$transaction(async (tx) => {
             
             // A. Déduction de l'énergie
@@ -1163,10 +1158,7 @@ async sellItem(dto: SellItemDto) {
                     joueur_id: attaquant.id,
                     adversaire_id: defenseur.id,
                     pv_joueur_actuel: pvAtk,
-                    
-                    // ✅ ICI : On utilise pvAdversaireStart qui est maintenant FULL HP
-                    pv_adversaire_actuel: pvAdversaireStart, 
-                    
+                    pv_adversaire_actuel: pvAdversaireStart, // FULL HP START
                     tour_numero: 1,
                     est_termine: false,
                     log_combat: []
@@ -1176,9 +1168,7 @@ async sellItem(dto: SellItemDto) {
             return { combat, updatedJoueur };
         });
 
-        
         await this.clearCache(dto.userId);
-
         const statsAtk = attaquant.statsTotales;
 
         return {
@@ -1187,10 +1177,7 @@ async sellItem(dto: SellItemDto) {
             pv_moi: result.combat.pv_joueur_actuel,
             pv_moi_max: statsAtk.pv_max_total, 
             pv_adv: result.combat.pv_adversaire_actuel,
-            
-            // On renvoie le max qu'on vient de calculer pour la barre de vie
             pv_adv_max: pvAdversaireStart, 
-            
             newEnergy: result.updatedJoueur.energie_actuelle, 
             message: `Le combat commence ! (-${COUT_ENERGIE} Énergie)`
         };
@@ -1202,8 +1189,8 @@ async sellItem(dto: SellItemDto) {
     }
   }
 
-// =================================================================
-  // ⚔️ JOUER UN TOUR (AVEC SYSTÈME ELO DYNAMIQUE)
+  // =================================================================
+  // ⚔️ JOUER UN TOUR (AVEC NOTIFICATIONS PVP)
   // =================================================================
   async playTurn(dto: PlayTurnDto) {
     const combat = await this.prisma.combats.findUnique({ where: { id: dto.combatId } });
@@ -1242,7 +1229,6 @@ async sellItem(dto: SellItemDto) {
     let forceBot = statsAdv.force;
     let defenseBot = statsAdv.defense;
 
-    // Boost PNJ (Bots)
     if (adversaire.is_bot) {
         const niv = adversaire.niveau ?? 1;
         if (forceBot < 5) forceBot = 10 + (niv * 4); 
@@ -1250,7 +1236,7 @@ async sellItem(dto: SellItemDto) {
     }
 
     // =================================================================
-    // 🛡️ DÉTECTION SKILL (Inchangé)
+    // 🛡️ DÉTECTION SKILL
     // =================================================================
     const armeEquipee = attaquant.inventaire.find(i => i.est_equipe && i.objets.type_equipement === 'MAIN_DROITE');
     const nomArme = (armeEquipee?.objets?.nom || "").toUpperCase();
@@ -1295,19 +1281,15 @@ async sellItem(dto: SellItemDto) {
     const logJ = `Tu utilises ${skill.nom} et infliges ${degatsJoueur} dégâts !`;
 
     // -----------------------------------------------------------
-    // 🏆 HELPER ELO : Calcul dynamique (Risk vs Reward)
+    // 🏆 HELPER ELO
     // -----------------------------------------------------------
     const calculateEloChange = (joueurElo: number, advElo: number, isVictory: boolean) => {
-        const K = 32; // Facteur d'impact (standard Elo)
+        const K = 32;
         const expectedScore = 1 / (1 + Math.pow(10, (advElo - joueurElo) / 400));
         const actualScore = isVictory ? 1 : 0;
-        
         let change = Math.round(K * (actualScore - expectedScore));
-        
-        // Bornes pour éviter les abus ou la stagnation
-        if (isVictory) change = Math.max(5, Math.min(30, change)); // Min +5, Max +30
-        else change = Math.max(-30, Math.min(-5, change));         // Min -30 (grosse perte), Max -5 (petite perte)
-
+        if (isVictory) change = Math.max(5, Math.min(30, change));
+        else change = Math.max(-30, Math.min(-5, change));
         return change;
     };
 
@@ -1316,14 +1298,11 @@ async sellItem(dto: SellItemDto) {
         const gainXp = 50 * (adversaire.niveau ?? 1);
         const gainBerrys = 100 * (adversaire.niveau ?? 1);
         
-        // ⚡ CALCUL ELO DYNAMIQUE (Uniquement si adversaire n'est pas un bot PVE)
-        // Si c'est un BOT, on gagne 0 Elo (ou un petit montant fixe si tu veux du PVE classé)
         let gainElo = 0;
         let perteEloAdv = 0;
 
         if (!adversaire.is_bot) {
             gainElo = calculateEloChange(attaquant.elo_pvp ?? 1000, adversaire.elo_pvp ?? 1000, true);
-            // L'adversaire perd ce que le joueur gagne (système à somme nulle ou presque)
             perteEloAdv = -gainElo; 
         }
 
@@ -1339,7 +1318,6 @@ async sellItem(dto: SellItemDto) {
         let finalLog = `VICTOIRE ! (+${gainElo} LP)`;
         if (levelsGained > 0) finalLog += ` NIVEAU UP ! (Niv ${newLevel})`;
 
-        // Transaction : On met à jour le vainqueur, le combat, ET le perdant (Elo)
         const transactionOps: any[] = [
             this.prisma.combats.update({
                 where: { id: combat.id },
@@ -1356,17 +1334,24 @@ async sellItem(dto: SellItemDto) {
             })
         ];
 
-        // Si PVP : On retire des points au perdant !
         if (!adversaire.is_bot) {
             transactionOps.push(
                 this.prisma.joueurs.update({
                     where: { id: adversaire.id },
                     data: { 
-                        elo_pvp: { increment: perteEloAdv }, // perteEloAdv est négatif
+                        elo_pvp: { increment: perteEloAdv },
                         defaites_pvp: { increment: 1 },
                         defaites: { increment: 1 }
                     }
                 })
+            );
+
+            // 👇 NOTIFICATION DEFENSEUR (DÉFAITE) 👇
+            await this.notifyPlayer(
+                adversaire.id,
+                "⚔️ Défaite défensive",
+                `Vous avez été attaqué par ${attaquant.pseudo} et vous avez perdu. Votre honneur (Elo) en prend un coup (-${Math.abs(perteEloAdv)} LP).`,
+                "WARNING"
             );
         }
 
@@ -1404,13 +1389,11 @@ async sellItem(dto: SellItemDto) {
         const perteBerrys = Math.floor((attaquant.berrys || 0) * 0.50);
         const gainXpConsolation = 10;
         
-        // ⚡ CALCUL ELO DÉFAITE
         let perteElo = 0;
         let gainEloAdv = 0;
 
         if (!adversaire.is_bot) {
             perteElo = calculateEloChange(attaquant.elo_pvp ?? 1000, adversaire.elo_pvp ?? 1000, false);
-            // perteElo est déjà négatif (ex: -12)
             gainEloAdv = Math.abs(perteElo); 
         }
 
@@ -1419,7 +1402,7 @@ async sellItem(dto: SellItemDto) {
         updateData.defaites = { increment: 1 };
         updateData.pv_actuel = 0;
         updateData.berrys = { decrement: perteBerrys };
-        updateData.elo_pvp = { increment: perteElo }; // On applique la perte
+        updateData.elo_pvp = { increment: perteElo };
         
         if (adversaire.is_bot) updateData.defaites_pve = { increment: 1 };
         else updateData.defaites_pvp = { increment: 1 };
@@ -1444,7 +1427,6 @@ async sellItem(dto: SellItemDto) {
             })
         ];
 
-        // Si PVP : Le vainqueur (l'adversaire) gagne des points !
         if (!adversaire.is_bot) {
             transactionOpsDefaite.push(
                 this.prisma.joueurs.update({
@@ -1455,6 +1437,14 @@ async sellItem(dto: SellItemDto) {
                         victoires: { increment: 1 }
                     }
                 })
+            );
+
+            // 👇 NOTIFICATION DEFENSEUR (VICTOIRE) 👇
+            await this.notifyPlayer(
+                adversaire.id,
+                "🛡️ Défense réussie !",
+                `Votre personnage a repoussé une attaque de ${attaquant.pseudo} pendant votre absence ! (+${gainEloAdv} LP)`,
+                "SUCCESS"
             );
         }
 
@@ -1475,7 +1465,12 @@ async sellItem(dto: SellItemDto) {
     // --- CONTINUER ---
     await this.prisma.combats.update({
         where: { id: combat.id },
-        data: { pv_adversaire_actuel: pvAdvRestant, pv_joueur_actuel: pvJoueurRestant, tour_numero: { increment: 1 }, log_combat: [...(combat.log_combat as any[]), logJ, logIA] }
+        data: { 
+            pv_adversaire_actuel: pvAdvRestant, 
+            pv_joueur_actuel: pvJoueurRestant, 
+            tour_numero: { increment: 1 }, 
+            log_combat: [...(combat.log_combat as any[]), logJ, logIA] 
+        }
     });
     
     await this.prisma.joueurs.update({ where: { id: attaquant.id }, data: { pv_actuel: pvJoueurRestant } });
@@ -2066,10 +2061,13 @@ async startStoryFight(userId: string, targetName: string) {
     return { success: true, message: "Objet mis en vente au marché !" };
   }
 
-  // 2. ACHETER AU MARCHÉ
+// 2. ACHETER AU MARCHÉ
   async buyFromMarket(dto: MarketBuyDto) {
-    // Récupérer l'annonce
-    const annonce = await this.prisma.marche.findUnique({ where: { id: dto.marketId } });
+    // Récupérer l'annonce (+ les infos de l'objet pour la notif)
+    const annonce = await this.prisma.marche.findUnique({ 
+        where: { id: dto.marketId },
+        include: { objets: true } // 👈 AJOUT: Pour récupérer le nom de l'item
+    });
     if (!annonce) throw new BadRequestException("Cette offre n'existe plus.");
 
     // Récupérer l'acheteur
@@ -2078,15 +2076,14 @@ async startStoryFight(userId: string, targetName: string) {
 
     if (annonce.vendeur_id === dto.userId) throw new BadRequestException("Tu ne peux pas acheter ton propre objet.");
     
-    // CORRECTION : On utilise 'prix_unitaire'
     const prixTotal = annonce.prix_unitaire ?? 0; 
     
     if ((acheteur.berrys ?? 0) < prixTotal) throw new BadRequestException(`Pas assez de Berrys (Prix: ${prixTotal})`);
 
-    // SÉCURITÉ : On s'assure que les IDs ne sont pas nulls
     const vendeurId = annonce.vendeur_id ?? "";
     const objetId = annonce.objet_id ?? 0;
 
+    // Transaction BDD
     await this.prisma.$transaction(async (tx) => {
         
         // A. Gérer l'argent
@@ -2095,7 +2092,7 @@ async startStoryFight(userId: string, targetName: string) {
             data: { berrys: { decrement: prixTotal } }
         });
         
-        // Crédit vendeur (si l'ID est valide)
+        // Crédit vendeur
         if (vendeurId) {
             await tx.joueurs.update({
                 where: { id: vendeurId },
@@ -2126,12 +2123,48 @@ async startStoryFight(userId: string, targetName: string) {
         // C. Supprimer l'annonce
         await tx.marche.delete({ where: { id: annonce.id } });
     });
+
+    // 👇 AJOUT NOTIFICATION VENDEUR 👇
+    if (vendeurId) {
+        const nomObjet = annonce.objets ? annonce.objets.nom : "Objet inconnu";
+        await this.notifyPlayer(
+            vendeurId,
+            "💰 Vente réussie !",
+            `Ton offre pour ${annonce.quantite}x ${nomObjet} a été achetée par ${acheteur.pseudo}. Tu as reçu ${prixTotal} Berrys.`,
+            "SUCCESS"
+        );
+    }
+
     await this.clearCache(dto.userId);
     return { success: true, message: "Achat réussi ! L'objet est dans ton sac." };
   }
-
   
+// =================================================================
+  // 📢 HELPER PRIVÉ : Notifier tout un équipage
+  // =================================================================
+  private async notifyCrew(crewId: string, titre: string, message: string, type: string = 'INFO') {
+      const membres = await this.prisma.joueurs.findMany({ 
+          where: { equipage_id: crewId },
+          select: { id: true }
+      });
+      
+      // On prépare les données pour une insertion de masse (plus performant)
+      const data = membres.map(m => ({
+          joueur_id: m.id,
+          titre,
+          message,
+          type,
+          lu: false
+      }));
+
+      if (data.length > 0) {
+          await this.prisma.notifications.createMany({ data });
+      }
+  }
+
+  // =================================================================
   // 1. CRÉER UN ÉQUIPAGE
+  // =================================================================
   async createCrew(dto: CreateCrewDto) {
     if (dto.nom.length < 3) throw new BadRequestException("Nom trop court.");
 
@@ -2146,23 +2179,19 @@ async startStoryFight(userId: string, targetName: string) {
     const exists = await this.prisma.equipages.findFirst({ where: { nom: dto.nom } });
     if (exists) throw new BadRequestException("Ce nom d'équipage est déjà pris.");
 
-    // Sécurité Faction (Car String non-nullable dans equipages)
     const faction = joueur.faction || "Pirate";
 
     await this.prisma.$transaction(async (tx) => {
-        // A. Créer l'équipage
         const crew = await tx.equipages.create({
             data: {
                 nom: dto.nom,
                 description: dto.description || "Un nouvel équipage.",
                 chef_id: dto.userId,
                 faction: faction,
-                berrys_banque: 0 // BigInt géré automatiquement par Prisma ici (0n)
+                berrys_banque: 0 
             }
         });
 
-        // B. Mettre à jour le joueur
-        // (Pas de rôle à mettre à jour car la colonne n'existe pas)
         await tx.joueurs.update({
             where: { id: dto.userId },
             data: {
@@ -2175,14 +2204,15 @@ async startStoryFight(userId: string, targetName: string) {
     return { success: true, message: `L'équipage ${dto.nom} est né !` };
   }
 
-  // 2. QUITTER L'ÉQUIPAGE
+  // =================================================================
+  // 2. QUITTER L'ÉQUIPAGE (CORRIGÉ)
+  // =================================================================
   async leaveCrew(userId: string) {
     const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId } });
     if (!joueur || !joueur.equipage_id) throw new BadRequestException("Tu es un loup solitaire.");
 
     const crew = await this.prisma.equipages.findUnique({ where: { id: joueur.equipage_id } });
     
-    // Si l'équipage n'existe plus (bug rare), on nettoie le joueur
     if (!crew) {
          await this.prisma.joueurs.update({ where: { id: userId }, data: { equipage_id: null } });
          return { success: true, message: "Tu as quitté un équipage fantôme." };
@@ -2191,12 +2221,10 @@ async startStoryFight(userId: string, targetName: string) {
     // Si c'est le capitaine -> Dissolution
     if (crew.chef_id === userId) {
         await this.prisma.$transaction([
-            // On libère tout le monde
             this.prisma.joueurs.updateMany({
                 where: { equipage_id: crew.id },
                 data: { equipage_id: null }
             }),
-            // On supprime l'équipage
             this.prisma.equipages.delete({ where: { id: crew.id } })
         ]);
         return { success: true, message: "L'équipage a été dissous." };
@@ -2208,10 +2236,18 @@ async startStoryFight(userId: string, targetName: string) {
         data: { equipage_id: null }
     });
 
+    // 👇 OPTIONNEL : On peut prévenir le chef qu'un membre est parti
+    // ✅ CORRECTION : On vérifie que chef_id existe avant d'envoyer
+    if (crew.chef_id) {
+        await this.notifyPlayer(crew.chef_id, "Départ", `${joueur.pseudo} a quitté l'équipage.`, "WARNING");
+    }
+
     return { success: true, message: "Tu as quitté l'équipage." };
   }
 
-  // 3. GESTION BANQUE
+  // =================================================================
+  // 3. GESTION BANQUE (Inchangé)
+  // =================================================================
   async manageBank(dto: CrewBankDto) {
     if (dto.montant <= 0) throw new BadRequestException("Montant invalide.");
 
@@ -2226,17 +2262,14 @@ async startStoryFight(userId: string, targetName: string) {
         if ((joueur.berrys ?? 0) < dto.montant) throw new BadRequestException("Tu n'as pas assez d'argent.");
         
         await this.prisma.$transaction([
-            // 1. Débit Joueur
             this.prisma.joueurs.update({ 
                 where: { id: dto.userId }, 
                 data: { berrys: { decrement: dto.montant } } 
             }),
-            // 2. Crédit Banque (BigInt géré par increment)
             this.prisma.equipages.update({ 
                 where: { id: crew.id }, 
                 data: { berrys_banque: { increment: dto.montant } } 
             }),
-            // 3. Log (On stocke le pseudo car pas de relation SQL)
             this.prisma.banque_logs.create({
                 data: {
                     equipage_id: crew.id,
@@ -2254,24 +2287,19 @@ async startStoryFight(userId: string, targetName: string) {
     if (dto.action === 'RETIRER') {
         if (crew.chef_id !== dto.userId) throw new BadRequestException("Seul le Capitaine peut retirer des fonds.");
         
-        // CONVERSION CRITIQUE : BigInt -> Number pour comparer
-        // Attention : Si la banque a > 9 quadrillions de berrys, on perd en précision, mais c'est acceptable pour un jeu.
         const soldeBanque = Number(crew.berrys_banque ?? 0n);
         
         if (soldeBanque < dto.montant) throw new BadRequestException("La banque est vide !");
 
         await this.prisma.$transaction([
-            // 1. Débit Banque
             this.prisma.equipages.update({ 
                 where: { id: crew.id }, 
                 data: { berrys_banque: { decrement: dto.montant } } 
             }),
-            // 2. Crédit Joueur
             this.prisma.joueurs.update({ 
                 where: { id: dto.userId }, 
                 data: { berrys: { increment: dto.montant } } 
             }),
-            // 3. Log
             this.prisma.banque_logs.create({
                 data: {
                     equipage_id: crew.id,
@@ -2286,6 +2314,9 @@ async startStoryFight(userId: string, targetName: string) {
     }
   }
 
+  // =================================================================
+  // 4. REJOINDRE ÉQUIPAGE (DEMANDE)
+  // =================================================================
   async joinCrew(dto: JoinCrewDto) {
     const joueur = await this.prisma.joueurs.findUnique({ where: { id: dto.userId } });
     if (!joueur) throw new BadRequestException("Joueur introuvable.");
@@ -2297,13 +2328,11 @@ async startStoryFight(userId: string, targetName: string) {
 
     if (crew.faction !== joueur.faction) throw new BadRequestException(`Tu es ${joueur.faction}, cet équipage est ${crew.faction}.`);
 
-    // Vérifier si déjà postulé
     const existingDemand = await this.prisma.demandes_adhesion.findFirst({
         where: { equipage_id: dto.crewId, joueur_id: dto.userId }
     });
     if (existingDemand) throw new BadRequestException("Tu as déjà postulé ici.");
 
-    // Créer la demande
     await this.prisma.demandes_adhesion.create({
         data: {
             equipage_id: dto.crewId,
@@ -2313,16 +2342,26 @@ async startStoryFight(userId: string, targetName: string) {
         }
     });
 
+    // 👇 NOTIFICATION 1: AU CHEF UNIQUEMENT
+    if (crew.chef_id) {
+        await this.notifyPlayer(
+            crew.chef_id, 
+            "📜 Candidature", 
+            `${joueur.pseudo} souhaite rejoindre votre équipage.`, 
+            "INFO"
+        );
+    }
+
     return { success: true, message: "Candidature envoyée au capitaine !" };
   }
 
+  // =================================================================
   // 5. GÉRER CANDIDATURE (Accepter / Refuser)
+  // =================================================================
   async manageApplication(dto: RecruitDto) {
-    // Récupérer la demande
     const demande = await this.prisma.demandes_adhesion.findUnique({ where: { id: dto.applicationId } });
     if (!demande) throw new BadRequestException("Candidature introuvable.");
 
-    // Vérifier les droits du capitaine
     const crew = await this.prisma.equipages.findUnique({ where: { id: demande.equipage_id! } });
     if (!crew) throw new BadRequestException("Équipage introuvable.");
     if (crew.chef_id !== dto.userId) throw new BadRequestException("Tu n'es pas le capitaine.");
@@ -2334,16 +2373,13 @@ async startStoryFight(userId: string, targetName: string) {
     }
 
     // CAS 2 : ACCEPTER
-    // On vérifie si le joueur n'a pas rejoint un autre équipage entre temps
     const candidat = await this.prisma.joueurs.findUnique({ where: { id: demande.joueur_id! } });
     if (!candidat) throw new BadRequestException("Le joueur n'existe plus.");
     if (candidat.equipage_id) {
-        // On supprime juste la demande car elle est obsolète
         await this.prisma.demandes_adhesion.delete({ where: { id: dto.applicationId } });
         throw new BadRequestException("Ce joueur a déjà rejoint un autre équipage.");
     }
 
-    // Transaction : Update Joueur + Delete Demande
     await this.prisma.$transaction([
         this.prisma.joueurs.update({
             where: { id: candidat.id },
@@ -2352,10 +2388,20 @@ async startStoryFight(userId: string, targetName: string) {
         this.prisma.demandes_adhesion.delete({ where: { id: dto.applicationId } })
     ]);
 
+    // 👇 NOTIFICATION 2: À TOUT LE MONDE
+    await this.notifyCrew(
+        crew.id,
+        "🎉 Nouveau Membre",
+        `Souhaitez la bienvenue à ${candidat.pseudo} qui vient de rejoindre l'équipage !`,
+        "SUCCESS"
+    );
+
     return { success: true, message: `Bienvenue à ${candidat.pseudo} !` };
   }
 
+  // =================================================================
   // 6. EXCLURE UN MEMBRE (KICK)
+  // =================================================================
   async kickMember(dto: KickDto) {
     if (dto.userId === dto.targetId) throw new BadRequestException("Tu ne peux pas t'exclure toi-même. Utilise 'Quitter'.");
 
@@ -2364,45 +2410,47 @@ async startStoryFight(userId: string, targetName: string) {
 
     if (!capitaine?.equipage_id || !membre?.equipage_id) throw new BadRequestException("Données invalides.");
     
-    // Vérifier qu'ils sont dans le MÊME équipage
     if (capitaine.equipage_id !== membre.equipage_id) throw new BadRequestException("Ce joueur n'est pas dans ton équipage.");
 
-    // Vérifier que c'est bien le chef qui demande
     const crew = await this.prisma.equipages.findUnique({ where: { id: capitaine.equipage_id } });
     if (!crew || crew.chef_id !== dto.userId) throw new BadRequestException("Seul le capitaine peut exclure des membres.");
 
-    // Action
     await this.prisma.joueurs.update({
         where: { id: dto.targetId },
         data: { equipage_id: null }
     });
 
+    // 👇 NOTIFICATION 5: AU MEMBRE KICKÉ
+    await this.notifyPlayer(
+        dto.targetId,
+        "🚫 Expulsion",
+        `Tu as été exclu de l'équipage "${crew.nom}" par le capitaine.`,
+        "WARNING"
+    );
+
     return { success: true, message: `${membre.pseudo} a été exclu.` };
   }
 
-  // 1. LANCER LA PRÉPARATION (Leader Only)
+  // =================================================================
+  // 7. PRÉPARATION RAID
+  // =================================================================
   async startRaidPrep(userId: string, typeRaid: number) {
     const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId } });
     if (!joueur?.equipage_id) throw new BadRequestException("Pas d'équipage.");
 
     const crew = await this.prisma.equipages.findUnique({ where: { id: joueur.equipage_id } });
-    
-    // 👇 SÉCURITÉ AJOUTÉE ICI
     if (!crew) throw new BadRequestException("Équipage introuvable."); 
-
     if (crew.chef_id !== userId) throw new BadRequestException("Seul le capitaine décide.");
+
     if (crew.expedition_etat === 'EN_REPARATION') {
-    // Si la date est passée, on débloque (cas limite), sinon erreur
-    if (new Date() > (crew.expedition_fin || new Date())) {
-        // On pourrait auto-réparer ici, mais pour simplifier on bloque
-         await this.prisma.equipages.update({ where: { id: crew.id }, data: { expedition_etat: 'AUCUNE' } });
-    } else {
-        throw new BadRequestException("Le navire est en réparation ! Impossible de partir.");
+        if (new Date() > (crew.expedition_fin || new Date())) {
+            await this.prisma.equipages.update({ where: { id: crew.id }, data: { expedition_etat: 'AUCUNE' } });
+        } else {
+            throw new BadRequestException("Le navire est en réparation ! Impossible de partir.");
+        }
     }
-}
     if (crew.expedition_etat !== 'AUCUNE') throw new BadRequestException("Une opération est déjà en cours !");
 
-    // Config des Raids
     const RAIDS: Record<number, { nom: string, cout: number }> = {
         1: { nom: "Pillage d'Île", cout: 5000 },
         2: { nom: "Chasse au Boss", cout: 15000 },
@@ -2411,42 +2459,46 @@ async startStoryFight(userId: string, targetName: string) {
     const raidConfig = RAIDS[typeRaid];
     if (!raidConfig) throw new BadRequestException("Type de raid inconnu.");
 
-    // Paiement
     const solde = Number(crew.berrys_banque ?? 0n);
     if (solde < raidConfig.cout) throw new BadRequestException(`Fonds insuffisants (${raidConfig.cout} ฿ requis).`);
 
-    // Démarrage Préparation (5 minutes)
     const finPrep = new Date(Date.now() + 5 * 60 * 1000); 
 
     await this.prisma.$transaction(async (tx) => {
         await tx.equipages.update({
-            where: { id: crew.id }, // Ici crew.id est sûr car on a vérifié !crew au dessus
+            where: { id: crew.id }, 
             data: {
                 berrys_banque: { decrement: raidConfig.cout },
                 expedition_etat: 'PREPARATION',
                 expedition_fin: finPrep,
                 expedition_cible_id: typeRaid,
-                expedition_participants: [userId] // Le chef participe d'office
+                expedition_participants: [userId] 
             }
         });
     });
 
+    // 👇 NOTIFICATION 3: À TOUT LE MONDE
+    await this.notifyCrew(
+        crew.id,
+        "⚔️ Appel aux Armes !",
+        `Le Capitaine a lancé un raid : "${raidConfig.nom}". Rejoignez l'expédition dans l'onglet 'Alliance' !`,
+        "INFO"
+    );
+
     return { success: true, message: `Préparation du raid : ${raidConfig.nom} lancée ! Les membres ont 5 minutes.` };
   }
 
-  // 2. REJOINDRE LE RAID (Membres)
+  // =================================================================
+  // 8. REJOINDRE RAID
+  // =================================================================
   async joinRaid(userId: string) {
     const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId } });
     if (!joueur?.equipage_id) throw new BadRequestException("Erreur joueur.");
 
     const crew = await this.prisma.equipages.findUnique({ where: { id: joueur.equipage_id } });
-    
-    // 👇 SÉCURITÉ AJOUTÉE ICI
     if (!crew) throw new BadRequestException("Équipage introuvable.");
-
     if (crew.expedition_etat !== 'PREPARATION') throw new BadRequestException("Trop tard ! Le raid est parti ou n'existe pas.");
 
-    // Vérifier si déjà inscrit
     const participants = (crew.expedition_participants as string[]) || [];
     if (participants.includes(userId)) throw new BadRequestException("Tu es déjà inscrit.");
 
@@ -2455,10 +2507,22 @@ async startStoryFight(userId: string, targetName: string) {
         data: { expedition_participants: { push: userId } }
     });
 
+    // 👇 NOTIFICATION 4: AU CHEF
+    if (crew.chef_id) {
+        await this.notifyPlayer(
+            crew.chef_id,
+            "🤝 Renforts",
+            `${joueur.pseudo} a rejoint l'expédition !`,
+            "INFO"
+        );
+    }
+
     return { success: true, message: "Tu as rejoint l'expédition !" };
   }
 
-  // 3. VÉRIFIER L'ÉTAT DU RAID (Correction PV & Formule Puissance)
+  // =================================================================
+  // 9. CHECK STATUS RAID
+  // =================================================================
   async checkRaidStatus(crewId: string) {
     const crew = await this.prisma.equipages.findUnique({ where: { id: crewId } });
     if (!crew || crew.expedition_etat === 'AUCUNE') return null;
@@ -2466,9 +2530,8 @@ async startStoryFight(userId: string, targetName: string) {
     const now = new Date();
     const finTimer = crew.expedition_fin ? new Date(crew.expedition_fin) : new Date();
 
-    // PHASE 1 : Lancement (Reste inchangé)
+    // PHASE 1 : Lancement
     if (crew.expedition_etat === 'PREPARATION' && now > finTimer) {
-        // Durées (en secondes pour test, à passer en heures plus tard)
         const DUREES: Record<number, number> = { 1: 60, 2: 120, 3: 180 }; 
         const dureeSecondes = DUREES[crew.expedition_cible_id || 1] || 60;
         
@@ -2483,34 +2546,19 @@ async startStoryFight(userId: string, targetName: string) {
     if (crew.expedition_etat === 'EN_COURS' && now > finTimer) {
         const participants = (crew.expedition_participants as string[]) || [];
         
-        // 1. On récupère les vraies stats des participants
         const joueurs = await this.prisma.joueurs.findMany({
             where: { id: { in: participants } },
             select: { id: true, niveau: true, pv_actuel: true }
         });
         
-        // 2. CALCUL DE LA PUISSANCE D'ÉQUIPE
-        // La puissance brute est la somme des niveaux
         const sommeNiveaux = joueurs.reduce((acc, j) => acc + (j.niveau || 1), 0);
-        
-        // Bonus de Synergie : +5% de puissance par membre présent
         const bonusSynergie = 1 + (participants.length * 0.05); 
-        
         const puissanceTotale = Math.floor(sommeNiveaux * bonusSynergie);
         
-        // 3. SEUILS DE DIFFICULTÉ (À ajuster selon l'équilibrage souhaité)
-        // Raid 1 : Besoin d'environ Niv 15 cumulé (ex: 3 joueurs niv 5)
-        // Raid 2 : Besoin d'environ Niv 60 cumulé
-        // Raid 3 : Besoin d'environ Niv 150 cumulé
-        const DIFFICULTE: Record<number, number> = { 
-            1: 15, 
-            2: 60,
-            3: 150 
-        };
+        const DIFFICULTE: Record<number, number> = { 1: 15, 2: 60, 3: 150 };
         const seuilRequis = DIFFICULTE[crew.expedition_cible_id || 1] || 15;
 
-        // Facteur Aléatoire (RNG) : La puissance varie de +/- 15% pendant le combat
-        const rng = 0.85 + (Math.random() * 0.3); // entre 0.85 et 1.15
+        const rng = 0.85 + (Math.random() * 0.3);
         const scoreFinal = puissanceTotale * rng;
         
         const succes = scoreFinal >= seuilRequis;
@@ -2536,16 +2584,25 @@ async startStoryFight(userId: string, targetName: string) {
                     expedition_participants: []
                 }
             });
+
+            // 👇 NOTIFICATION 6 (VICTOIRE): AUX PARTICIPANTS
+            for (const pId of participants) {
+                await this.notifyPlayer(
+                    pId,
+                    "🏆 Raid Réussi !",
+                    `Votre alliance a triomphé ! Gain pour l'équipage : +${gainXp} XP et +${gainBerrys} Berrys.`,
+                    "REWARD"
+                );
+            }
+
         } 
         // --- CAS DÉFAITE ---
         else {
             msg = `ÉCHEC... Puissance : ${Math.floor(scoreFinal)} / ${seuilRequis}. Navire endommagé.`;
             const perteXp = 100 * (crew.expedition_cible_id || 1);
             
-            // Gestion des dégâts sécurisée (Pas de PV négatifs)
             const updatesJoueurs = joueurs.map(j => {
                 const pvActuels = j.pv_actuel ?? 100;
-                // Si < 50, ça tombe à 0
                 const nouveauxPv = Math.max(0, pvActuels - 50); 
                 
                 return this.prisma.joueurs.update({
@@ -2559,24 +2616,34 @@ async startStoryFight(userId: string, targetName: string) {
                     where: { id: crew.id },
                     data: {
                         xp: { decrement: perteXp },
-                        expedition_etat: 'EN_REPARATION', // Bloqué 12h
+                        expedition_etat: 'EN_REPARATION',
                         expedition_fin: new Date(now.getTime() + 12 * 60 * 60 * 1000),
                         expedition_participants: []
                     }
                 }),
-                ...updatesJoueurs // On exécute toutes les mises à jour de PV
+                ...updatesJoueurs
             ]);
+
+            // 👇 NOTIFICATION 6 (ECHEC): AUX PARTICIPANTS
+            for (const pId of participants) {
+                await this.notifyPlayer(
+                    pId,
+                    "💀 Raid Échoué",
+                    `La puissance de l'équipage était insuffisante. Vous avez perdu 50 PV et le navire est en réparation.`,
+                    "WARNING"
+                );
+            }
         }
 
         return { status: 'FINI', success: succes, message: msg, xp: gainXp, berrys: gainBerrys };
     }
 
-    // PHASE 3 : FIN DE RÉPARATION -> RETOUR À LA NORMALE
+    // PHASE 3 : FIN DE RÉPARATION
     if (crew.expedition_etat === 'EN_REPARATION' && now > finTimer) {
         await this.prisma.equipages.update({
             where: { id: crew.id },
             data: {
-                expedition_etat: 'AUCUNE', // On libère l'équipage
+                expedition_etat: 'AUCUNE',
                 expedition_fin: null,
                 expedition_participants: []
             }
@@ -2586,7 +2653,9 @@ async startStoryFight(userId: string, targetName: string) {
     return null;
   }
   
-  // 4. FORCER LE DÉPART (Chef uniquement)
+  // =================================================================
+  // 10. FORCE START & UPDATE (Inchangé sauf si tu veux notifier ici aussi)
+  // =================================================================
   async forceStartRaid(userId: string) {
     const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId } });
     if (!joueur?.equipage_id) throw new BadRequestException("Erreur joueur.");
@@ -2596,8 +2665,6 @@ async startStoryFight(userId: string, targetName: string) {
 
     if (crew.expedition_etat !== 'PREPARATION') throw new BadRequestException("Le raid n'est pas en phase de préparation.");
 
-    // On calcule la durée du raid (ex: 1h, 3h...)
-    // REMPLACE PAR LES VRAIES DURÉES (3600, etc.)
     const DUREES: Record<number, number> = { 1: 60, 2: 120, 3: 180 }; 
     const dureeSecondes = DUREES[crew.expedition_cible_id || 1] || 60;
     
@@ -2607,7 +2674,7 @@ async startStoryFight(userId: string, targetName: string) {
         where: { id: crew.id },
         data: {
             expedition_etat: 'EN_COURS',
-            expedition_fin: finRaid // On met à jour la fin car on part plus tôt que prévu
+            expedition_fin: finRaid 
         }
     });
 
@@ -2615,23 +2682,19 @@ async startStoryFight(userId: string, targetName: string) {
   }
 
   async updateCrewSettings(dto: UpdateCrewDto) {
-    // 1. Vérifier Joueur
     const joueur = await this.prisma.joueurs.findUnique({ where: { id: dto.userId } });
     if (!joueur?.equipage_id) throw new BadRequestException("Tu n'as pas d'équipage.");
 
-    // 2. Vérifier Capitaine
     const crew = await this.prisma.equipages.findUnique({ where: { id: joueur.equipage_id } });
     if (!crew) throw new BadRequestException("Équipage introuvable.");
     if (crew.chef_id !== dto.userId) throw new BadRequestException("Seul le capitaine peut modifier l'équipage.");
 
-    // 3. Validation Nom (Si changé)
     if (dto.nom !== crew.nom) {
         if (dto.nom.length < 3) throw new BadRequestException("Nom trop court.");
         const exists = await this.prisma.equipages.findFirst({ where: { nom: dto.nom } });
         if (exists) throw new BadRequestException("Ce nom est déjà pris par un autre équipage.");
     }
 
-    // 4. Update
     await this.prisma.equipages.update({
         where: { id: crew.id },
         data: {
@@ -2891,16 +2954,7 @@ async getTravelData() {
     });
   }
 
-  async getTitles(userId: string) {
-    const [mesTitres, allTitres] = await this.prisma.$transaction([
-        this.prisma.joueur_titres.findMany({
-            where: { joueur_id: userId },
-            include: { titres_ref: true }
-        }),
-        this.prisma.titres_ref.findMany() // Pour afficher ceux qu'on n'a pas encore (optionnel)
-    ]);
-    return { mesTitres, allTitres };
-  }
+
 
   async getChatHistory(canal: string) {
       // canal ressemble à "GLOBAL", "FACTION_Pirate", "EQUIPAGE_xyz..."
@@ -3315,38 +3369,8 @@ private calculatePlayerStats(joueur: any) {
   }
 // Dans backend/src/game/game.service.ts
 
-// 🏆 FONCTION GÉNÉRIQUE POUR DÉBLOQUER UN TITRE
-// (Assurez-vous d'utiliser cette fonction lorsque le joueur gagne un titre)
-async unlockTitle(userId: string, nomTitre: string) {
-    const titreRef = await this.prisma.titres_ref.findFirst({ where: { nom: nomTitre } });
-    if (!titreRef) throw new BadRequestException(`Titre "${nomTitre}" introuvable.`);
 
-    const existingTitle = await this.prisma.joueur_titres.findFirst({
-        where: { joueur_id: userId, titre_id: titreRef.id }
-    });
-
-    if (existingTitle) {
-        return { success: true, message: `Titre déjà possédé : ${nomTitre}` };
-    }
-
-    // Déblocage réel
-    await this.prisma.joueur_titres.create({
-        data: {
-            joueur_id: userId,
-            titre_id: titreRef.id,
-            date_obtention: new Date()
-        }
-    });
-    
-    await this.clearCache(userId);
-
-    // 🔥 INDICATION CLÉ : Renvoie le nouveau titre pour le pop-up
-    return { 
-        success: true, 
-        message: `🎉 Nouveau Titre débloqué : « ${nomTitre} » !`,
-        newTitleUnlocked: nomTitre // Clé pour le Frontend
-    };
-}
+  
 // =================================================================
   // 🧠 HELPER : CALCUL DU PASSAGE DE NIVEAU (CORRIGÉ)
   // =================================================================
@@ -3404,26 +3428,80 @@ async unlockTitle(userId: string, nomTitre: string) {
       return { updateData, levelsGained, newLevel: currentLevel };
   }
   // =================================================================
-  // 🏆 SYSTÈME DE TITRES : MOTEUR DE VÉRIFICATION
+  // 📖 RÉCUPÉRER LES TITRES (Lecture seule)
+  // =================================================================
+  async getTitles(userId: string) {
+    const [mesTitres, allTitres] = await this.prisma.$transaction([
+        this.prisma.joueur_titres.findMany({
+            where: { joueur_id: userId },
+            include: { titres_ref: true }
+        }),
+        this.prisma.titres_ref.findMany({ orderBy: { condition_valeur: 'asc' } }) 
+    ]);
+    return { mesTitres, allTitres };
+  }
+
+  // =================================================================
+  // 🔓 DÉBLOQUAGE MANUEL (Admin ou Event Spécial)
+  // =================================================================
+  async unlockTitle(userId: string, nomTitre: string) {
+    const titreRef = await this.prisma.titres_ref.findFirst({ where: { nom: nomTitre } });
+    if (!titreRef) throw new BadRequestException(`Titre "${nomTitre}" introuvable.`);
+
+    const existingTitle = await this.prisma.joueur_titres.findFirst({
+        where: { joueur_id: userId, titre_id: titreRef.id }
+    });
+
+    if (existingTitle) {
+        return { success: true, message: `Titre déjà possédé : ${nomTitre}` };
+    }
+
+    // Déblocage réel
+    await this.prisma.joueur_titres.create({
+        data: {
+            joueur_id: userId,
+            titre_id: titreRef.id,
+            date_obtention: new Date()
+        }
+    });
+    
+    // 👇 NOTIFICATION AJOUTÉE ICI
+    await this.notifyPlayer(
+        userId,
+        "🏆 Titre Légendaire",
+        `Vous avez obtenu un titre spécial : « ${nomTitre} » !`,
+        "REWARD"
+    );
+
+    await this.clearCache(userId);
+
+    return { 
+        success: true, 
+        message: `🎉 Nouveau Titre débloqué : « ${nomTitre} » !`,
+        newTitleUnlocked: nomTitre
+    };
+  }
+
+  // =================================================================
+  // ⚙️ MOTEUR DE VÉRIFICATION DES TITRES (AUTO)
   // =================================================================
   private async checkAndUnlockTitles(userId: string) {
-    // 1. Charger le joueur avec TOUTES les infos nécessaires (Faction, Equipage, etc.)
+    // 1. Charger le joueur avec TOUTES les infos nécessaires
     const joueur = await this.prisma.joueurs.findUnique({
         where: { id: userId },
         include: { 
-            equipage: true, // Pour les titres liés au niveau d'équipage
-            joueur_titres: true // Pour savoir ce qu'il a déjà
+            equipage: true, 
+            joueur_titres: true 
         }
     });
 
     if (!joueur) return;
 
-    // 2. Charger tous les titres de référence
+    // 2. Charger tous les titres
     const allTitres = await this.prisma.titres_ref.findMany();
 
-    // 3. Créer un Set des IDs déjà possédés pour optimiser la boucle
+    // 3. Optimisation : Liste des IDs déjà possédés
     const titresPossedesIds = new Set(joueur.joueur_titres.map(t => t.titre_id));
-
     const newUnlockedTitres: string[] = [];
 
     // 4. Boucle de vérification
@@ -3431,19 +3509,17 @@ async unlockTitle(userId: string, nomTitre: string) {
         if (titresPossedesIds.has(titre.id)) continue; // Déjà acquis
 
         let conditionMet = false;
-        const val = Number(titre.condition_valeur); // Conversion BigInt/String -> Number
+        const val = Number(titre.condition_valeur); // Conversion BigInt -> Number
 
         switch (titre.condition_type) {
             // --- FACTIONS & NIVEAU ---
             case 'LEVEL_PIRATE':
-                // On vérifie que la faction contient "Pirate" (insensible à la casse) et le niveau
                 if (joueur.faction?.toUpperCase().includes('PIRATE') && (joueur.niveau ?? 1) >= val) conditionMet = true;
                 break;
             case 'LEVEL_MARINE':
                 if (joueur.faction?.toUpperCase().includes('MARINE') && (joueur.niveau ?? 1) >= val) conditionMet = true;
                 break;
             case 'LEVEL_REVOLUTIONNAIRE':
-                // Attention aux accents dans la BDD vs Code
                 const faction = joueur.faction?.toUpperCase() || "";
                 if ((faction.includes('REVOLUTIONNAIRE') || faction.includes('RÉVOLUTIONNAIRE')) && (joueur.niveau ?? 1) >= val) conditionMet = true;
                 break;
@@ -3459,7 +3535,7 @@ async unlockTitle(userId: string, nomTitre: string) {
             // --- COMBATS ---
             case 'VICTOIRES_PVP': if ((joueur.victoires_pvp ?? 0) >= val) conditionMet = true; break;
             case 'DEFAITES_PVP': if ((joueur.defaites_pvp ?? 0) >= val) conditionMet = true; break;
-            case 'VICTOIRES_PVE': if ((joueur.victoires_pve ?? 0) >= val) conditionMet = true; break; // "PVP PVM" dans ton seed semble être PVE
+            case 'VICTOIRES_PVE': if ((joueur.victoires_pve ?? 0) >= val) conditionMet = true; break;
 
             // --- ECONOMIE & DIVERS ---
             case 'BERRYS': if ((joueur.berrys ?? 0) >= val) conditionMet = true; break;
@@ -3468,7 +3544,6 @@ async unlockTitle(userId: string, nomTitre: string) {
             // --- NAVIRE & EQUIPAGE ---
             case 'SHIP_LEVEL': if ((joueur.niveau_navire ?? 1) >= val) conditionMet = true; break;
             case 'CREW_LEVEL': 
-                // Vérifie si le joueur a un équipage et son niveau
                 if (joueur.equipage && (joueur.equipage.niveau ?? 1) >= val) conditionMet = true; 
                 break;
             case 'CREW_XP_GIVEN': if (Number(joueur.xp_donnee_equipage ?? 0) >= val) conditionMet = true; break;
@@ -3489,7 +3564,7 @@ async unlockTitle(userId: string, nomTitre: string) {
             case 'POTIONS_CONSUMED': if ((joueur.nb_potions_bues ?? 0) >= val) conditionMet = true; break;
             case 'ACTIVITY_CLICK_COUNT': if ((joueur.nb_activites ?? 0) >= val) conditionMet = true; break;
             
-            // --- BOUTIQUE / CASINO (Besoin des colonnes dans Prisma) ---
+            // --- BOUTIQUE / CASINO ---
             case 'SHOP_SPENT': if (Number(joueur.berrys_depenses_shop ?? 0) >= val) conditionMet = true; break;
             case 'CASINO_WAGERED': if (Number(joueur.berrys_mises_casino ?? 0) >= val) conditionMet = true; break;
             case 'CASINO_LOST_ALL': if (joueur.a_tout_perdu_casino) conditionMet = true; break;
@@ -3507,12 +3582,20 @@ async unlockTitle(userId: string, nomTitre: string) {
                     date_obtention: new Date()
                 }
             });
+            
             newUnlockedTitres.push(titre.nom);
-            console.log(`🎉 Titre débloqué pour ${joueur.pseudo}: ${titre.nom}`);
+
+            // 👇 NOTIFICATION AJOUTÉE ICI (Pour chaque titre débloqué)
+            await this.notifyPlayer(
+                userId,
+                "🏆 Titre Débloqué",
+                `Félicitations ! Vous portez désormais le titre : « ${titre.nom} »`,
+                "REWARD"
+            );
         }
     }
 
-    return newUnlockedTitres; // On renvoie la liste pour l'afficher au front si besoin
+    return newUnlockedTitres; 
   }
 // =================================================================
   // 9. ACTIVITÉ / EXPLORATION
@@ -3770,181 +3853,6 @@ async recolterExpedition(dto: { userId: string }) {
     };
 }
 
-
-
-// ====================================================================
-  // 🏆 SYSTÈME DE SUCCÈS (TITRES)
-  // ====================================================================
-  async checkAchievements(userId: string) {
-    // 1. Récupération du joueur avec toutes les infos nécessaires
-    const joueur = await this.prisma.joueurs.findUnique({
-      where: { id: userId },
-      include: { 
-        joueur_titres: true, // Pour savoir ce qu'il a déjà
-        equipage: true       // Pour les titres liés à l'équipage
-      }
-    });
-
-    if (!joueur) return;
-
-    // 2. Récupération de tous les titres existants
-    const allTitres = await this.prisma.titres_ref.findMany();
-
-    // Liste des IDs que le joueur possède déjà
-    const myTitlesIds = new Set(joueur.joueur_titres.map(jt => jt.titre_id));
-
-    // Liste des nouveaux titres à attribuer
-    const titlesToAward: any[] = [];
-
-    // 3. Boucle de vérification
-    for (const titre of allTitres) {
-      // Si on a déjà le titre, on passe
-      if (myTitlesIds.has(titre.id)) continue;
-
-      let conditionMet = false;
-      
-      // On convertit la valeur de condition (BigInt) en Nombre pour faciliter les comparaisons
-      // (Attention : cela suppose que les valeurs ne dépassent pas MAX_SAFE_INTEGER, soit 9 Peta-octets, ce qui est large)
-      const val = Number(titre.condition_valeur); 
-
-      switch (titre.condition_type) {
-        
-        // --- 📊 STATISTIQUES ---
-        case 'STAT_AGILITE':
-          if ((joueur.agilite ?? 0) >= val) conditionMet = true;
-          break;
-        case 'STAT_FORCE':
-          if ((joueur.force ?? 0) >= val) conditionMet = true;
-          break;
-        case 'STAT_INTELLIGENCE':
-          if ((joueur.intelligence ?? 0) >= val) conditionMet = true;
-          break;
-        case 'STAT_SAGESSE':
-          if ((joueur.sagesse ?? 0) >= val) conditionMet = true;
-          break;
-        case 'STAT_VITALITE':
-          if ((joueur.vitalite ?? 0) >= val) conditionMet = true;
-          break;
-        case 'STAT_CHANCE':
-          if ((joueur.chance ?? 0) >= val) conditionMet = true;
-          break;
-
-        // --- 🏴‍☠️ NIVEAU & FACTION ---
-        case 'LEVEL_PIRATE':
-          if (joueur.faction === 'Pirate' && (joueur.niveau ?? 0) >= val) conditionMet = true;
-          break;
-        case 'LEVEL_MARINE':
-          if (joueur.faction === 'Marine' && (joueur.niveau ?? 0) >= val) conditionMet = true;
-          break;
-        case 'LEVEL_REVOLUTIONNAIRE':
-          if (joueur.faction === 'Révolutionnaire' && (joueur.niveau ?? 0) >= val) conditionMet = true;
-          break;
-
-        // --- 💰 ARGENT ---
-        case 'BERRYS':
-          if ((joueur.berrys ?? 0) >= val) conditionMet = true;
-          break;
-        case 'SHOP_SPENT':
-          // berrys_depenses_shop est un BigInt dans le schéma
-          if (Number(joueur.berrys_depenses_shop ?? 0) >= val) conditionMet = true;
-          break;
-
-        // --- ⚔️ COMBATS ---
-        case 'VICTOIRES_PVP':
-          if ((joueur.victoires_pvp ?? 0) >= val) conditionMet = true;
-          break;
-        case 'DEFAITES_PVP':
-          if ((joueur.defaites_pvp ?? 0) >= val) conditionMet = true;
-          break;
-        case 'VICTOIRES_PVE': // "PVP PVM" dans ton texte, j'assume victoires contre bots
-          if ((joueur.victoires_pve ?? 0) >= val) conditionMet = true;
-          break;
-
-        // --- ⚓ NAVIRE & VOYAGE ---
-        case 'SHIP_LEVEL':
-          if ((joueur.niveau_navire ?? 1) >= val) conditionMet = true;
-          break;
-        case 'EXPEDITIONS_COUNT':
-          if ((joueur.nb_expeditions_reussies ?? 0) >= val) conditionMet = true;
-          break;
-
-        // --- 🏴‍☠️ ÉQUIPAGE ---
-        case 'CREW_LEVEL':
-          // Il faut avoir un équipage ET que cet équipage ait le niveau requis
-          if (joueur.equipage && (joueur.equipage.niveau ?? 1) >= val) conditionMet = true;
-          break;
-        case 'CREW_XP_GIVEN':
-          if (Number(joueur.xp_donnee_equipage ?? 0) >= val) conditionMet = true;
-          break;
-
-        // --- 🔥 HAKI & FRUIT ---
-        case 'HAS_FRUIT':
-          // Si val == 1, on vérifie juste s'il a un fruit (non null)
-          if (joueur.fruit_demon !== null && joueur.fruit_demon !== "") conditionMet = true;
-          break;
-        case 'HAKI_COUNT':
-          // On compte le nombre de Hakis débloqués
-          let hakiCount = 0;
-          if (joueur.haki_observation) hakiCount++;
-          if (joueur.haki_armement) hakiCount++;
-          if (joueur.haki_rois) hakiCount++;
-          if (hakiCount >= val) conditionMet = true;
-          break;
-
-        // --- 🛠️ ACTIONS DIVERSES ---
-        case 'CRAFTS_COUNT':
-          if ((joueur.nb_crafts ?? 0) >= val) conditionMet = true;
-          break;
-        case 'CHESTS_OPENED':
-          if ((joueur.nb_coffres_ouverts ?? 0) >= val) conditionMet = true;
-          break;
-        case 'POTIONS_CONSUMED':
-          if ((joueur.nb_potions_bues ?? 0) >= val) conditionMet = true;
-          break;
-        case 'ACTIVITY_CLICK_COUNT':
-          if ((joueur.nb_activites ?? 0) >= val) conditionMet = true;
-          break;
-
-        // --- 🎲 CASINO ---
-        case 'CASINO_WAGERED':
-          if (Number(joueur.berrys_mises_casino ?? 0) >= val) conditionMet = true;
-          break;
-        case 'CASINO_LOST_ALL':
-          // Vérifie le booléen
-          if (joueur.a_tout_perdu_casino === true) conditionMet = true;
-          break;
-
-        // --- 💀 AUTRE ---
-        case 'HAS_DIED':
-          // Si tu n'as pas de colonne "is_dead", on peut supposer que c'est basé sur une autre stat 
-          // ou une variable temporaire. Pour l'instant, je mets une condition générique.
-          // Si tu ajoutes une colonne "nb_morts", remplace ici.
-          // Exemple actuel : si PV == 0
-          if ((joueur.pv_actuel ?? 1) <= 0) conditionMet = true;
-          break;
-      }
-
-      // ✅ ATTRIBUTION DU TITRE
-      if (conditionMet) {
-        titlesToAward.push({
-          joueur_id: userId,
-          titre_id: titre.id,
-          date_obtention: new Date()
-        });
-      }
-    }
-
-    // 4. Sauvegarde en masse dans la base de données
-    if (titlesToAward.length > 0) {
-      await this.prisma.joueur_titres.createMany({
-        data: titlesToAward,
-        skipDuplicates: true // Sécurité supplémentaire
-      });
-      
-      // Optionnel : Envoyer une notification Socket ou invalider le cache ici
-      // this.cacheManager.del(`player_profile_v2:${userId}`);
-    }
-  }
 // --- BOUTIQUE ---
   async getShopItems() {
     const items = await this.prisma.objets.findMany({
