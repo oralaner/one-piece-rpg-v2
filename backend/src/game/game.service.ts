@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, NotFoundException, BadRequestException, ForbiddenException, Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { PrismaService } from '../prisma.service';
@@ -4126,6 +4126,100 @@ async recolterExpedition(dto: { userId: string }) {
     return { leveledUp, currentLevel };
   }
 
+  // =================================================================
+    // 🛠️ ADMIN & NOTIFICATIONS
+    // =================================================================
+
+    // Vérification Admin
+    private async verifyAdmin(userId: string) {
+        const user = await this.prisma.joueurs.findUnique({ where: { id: userId } });
+        if (!user || user.role !== 'ADMIN') {
+            throw new ForbiddenException("⛔ Accès interdit. Réservé aux Amiraux (Admins).");
+        }
+    }
+
+    // 1. Liste des joueurs (Backoffice)
+    async getAllPlayers(adminId: string) {
+        await this.verifyAdmin(adminId);
+        return this.prisma.joueurs.findMany({
+            orderBy: { niveau: 'desc' },
+            select: { 
+                id: true, pseudo: true, niveau: true, berrys: true, 
+                faction: true, role: true, equipage_id: true
+            },
+            take: 100 // Limite pour la performance
+        });
+    }
+
+    // 2. Action Admin (Give / Ban / Reset)
+    async adminAction(adminId: string, targetId: string, action: string, amount?: number) {
+        await this.verifyAdmin(adminId);
+        
+        let data: any = {};
+        let notifMsg = "";
+
+        switch(action) {
+            case 'GIVE_BERRYS':
+                data = { berrys: { increment: amount || 0 } };
+                notifMsg = `L'administration vous a versé ${amount} Berrys.`;
+                break;
+            case 'GIVE_XP':
+                data = { xp: { increment: amount || 0 } };
+                notifMsg = `Vous avez reçu ${amount} XP divine.`;
+                break;
+            case 'BAN':
+                data = { faction: 'BANNIS', equipage_id: null }; // Exemple simple de ban
+                notifMsg = "Votre compte a été suspendu par un administrateur.";
+                break;
+            case 'RESET_ENERGY':
+                data = { energie_actuelle: 10 };
+                notifMsg = "Votre énergie a été restaurée.";
+                break;
+        }
+
+        await this.prisma.joueurs.update({ where: { id: targetId }, data });
+        
+        // Notifier la cible
+        await this.notifyPlayer(targetId, "Message Système", notifMsg, "INFO");
+        
+        return { success: true, message: `Action ${action} effectuée sur ${targetId}` };
+    }
+
+    // 3. Broadcast (Message à tout le serveur)
+    async adminBroadcast(adminId: string, titre: string, message: string) {
+        await this.verifyAdmin(adminId);
+        const allIds = await this.prisma.joueurs.findMany({ select: { id: true } });
+        
+        const data = allIds.map(p => ({
+            joueur_id: p.id, titre, message, type: 'INFO', lu: false
+        }));
+
+        await this.prisma.notifications.createMany({ data });
+        return { count: allIds.length, success: true };
+    }
+
+    // 4. Gestion Notifications
+    async getMyNotifications(userId: string) {
+        return this.prisma.notifications.findMany({
+            where: { joueur_id: userId },
+            orderBy: { created_at: 'desc' },
+            take: 20
+        });
+    }
+
+    async readNotification(userId: string, notifId: string) {
+        const notif = await this.prisma.notifications.findUnique({ where: { id: notifId } });
+        if (!notif || notif.joueur_id !== userId) return;
+        return this.prisma.notifications.update({ where: { id: notifId }, data: { lu: true } });
+    }
+
+    // Helper interne
+    async notifyPlayer(userId: string, titre: string, message: string, type = 'INFO') {
+        return this.prisma.notifications.create({
+            data: { joueur_id: userId, titre, message, type }
+        });
+    }
+    
 // =================================================================
   // 🛠️ DEBUG : RESET COMPLET DU JOUEUR
   // =================================================================

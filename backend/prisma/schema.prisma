@@ -9,6 +9,16 @@ datasource db {
   schemas  = ["public"]
 }
 
+// --- GESTION ADMIN & NOTIFICATIONS ---
+
+enum Role {
+  JOUEUR
+  ADMIN
+  MODERATEUR
+
+  @@schema("public")
+}
+
 model banque_logs {
   id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   equipage_id   String?    @db.Uuid
@@ -262,11 +272,28 @@ model joueurs {
   marche                               marche[]
   messages                             messages[]
   quetes_journalieres                  quetes_journalieres[]
+  role                                 Role                  @default(JOUEUR) // Nouveau champ
+  notifications                        notifications[] // Relation
 
   @@index([equipage_id])
   @@index([niveau(sort: Desc)])
   @@index([elo_pvp(sort: Desc)])
   @@schema("public")
+}
+
+model notifications {
+  id        String   @id @default(uuid())
+  joueur_id String   @db.Uuid
+  joueur    joueurs  @relation(fields: [joueur_id], references: [id], onDelete: Cascade)
+  
+  titre     String
+  message   String
+  type      String   @default("INFO")
+  lu        Boolean  @default(false)
+  
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@schema("public") // 👈 LIGNE À AJOUTER OBLIGATOIREMENT
 }
 
 model marche {

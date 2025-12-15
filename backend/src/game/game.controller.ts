@@ -417,4 +417,36 @@ export class GameController {
   async debugReset(@Body() body: { userId: string }) {
     return this.gameService.debugResetPlayer(body.userId);
   }
+
+  // --- 🛠️ ROUTES ADMIN ---
+  @Get('admin/players')
+  @UseGuards(AuthGuard('jwt'))
+  async getAdminPlayers(@User() userId: string) {
+      return this.gameService.getAllPlayers(userId);
+  }
+
+  @Post('admin/action')
+  @UseGuards(AuthGuard('jwt'))
+  async adminAction(@User() userId: string, @Body() body: any) {
+      return this.gameService.adminAction(userId, body.targetId, body.action, body.amount);
+  }
+
+  @Post('admin/broadcast')
+  @UseGuards(AuthGuard('jwt'))
+  async adminBroadcast(@User() userId: string, @Body() body: any) {
+      return this.gameService.adminBroadcast(userId, body.titre, body.message);
+  }
+
+  // --- 🔔 ROUTES NOTIFICATIONS ---
+  @Get('notifications')
+  @UseGuards(AuthGuard('jwt'))
+  async getNotifications(@User() userId: string) {
+      return this.gameService.getMyNotifications(userId);
+  }
+
+  @Post('notifications/:id/read')
+  @UseGuards(AuthGuard('jwt'))
+  async readNotification(@User() userId: string, @Param('id') id: string) {
+      return this.gameService.readNotification(userId, id);
+  }
 }

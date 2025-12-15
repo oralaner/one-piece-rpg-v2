@@ -10,6 +10,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import FactionSelector from './components/FactionSelector';
 import LevelUpModal from './components/LevelUpModal';
 import { api } from "./utils/api";
+import NotificationWidget from "./components/NotificationWidget"; // 👈 NOUVEAU
+
 
 // Import Visuel
 import EquipSlot from "./components/EquipSlot";
@@ -32,6 +34,8 @@ import DeckTab from "./features/DeckTab";
 import StatsTab from "./features/StatsTab";
 import ArenaTab from "./features/ArenaTab";
 import StoryTab from './features/StoryTab';
+import AdminTab from "./features/AdminTab"; // 👈 NOUVEAU
+
 
 
 export default function Home() {
@@ -47,7 +51,7 @@ export default function Home() {
         isNewPlayer, // ✅ AJOUT CRUCIAL ICI
 
         // Actions Inventaire
-        ouvrirModaleVente, confirmerVente, annulerVente, sellModalItem,
+        ouvrirModaleVente, confirmerVente, annulerVente, sellModalItem, session, setActiveTab,
         marketSellItem, marketPrice, setMarketPrice, confirmerMiseEnVente, annulerMiseEnVente,
         // Actions Arène
         areneFilter, setAreneFilter, chargerArene,
@@ -357,6 +361,18 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                     {/* Espace vide pour le menu mobile en bas */}
                     <div className="h-20 md:hidden"></div>
                 </div>
+                {/* 🔥 WIDGET NOTIFICATIONS 🔥 */}
+                    <NotificationWidget />
+
+                    {/* 🔥 BOUTON ADMIN (Visible seulement si admin) 🔥 */}
+                    {joueur?.role === 'ADMIN' && (
+                        <button 
+                            onClick={() => setActiveTab('ADMIN')}
+                            className={`p-2 rounded-lg font-bold text-[10px] uppercase border transition ${activeTab === 'ADMIN' ? 'bg-red-600 text-white border-red-400' : 'bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40'}`}
+                        >
+                            ADMIN
+                        </button>
+                    )}
                 <LogoutButton />
                 {/* 🔥 BOUTON DEBUG POUR DEVELOPPEUR */}
 
