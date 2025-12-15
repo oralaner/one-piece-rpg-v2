@@ -41,7 +41,7 @@ const NotificationWidget = () => {
     const markAsRead = async (id) => {
         try {
             await api.post(`/game/notifications/${id}/read`);
-            setNotifs(prev => prev.map(n => n.id === id ? { ...n, lu: true } : n));
+            setNotifs(prev => prev.filter(n => n.id !== id));
         } catch (e) {}
     };
 
