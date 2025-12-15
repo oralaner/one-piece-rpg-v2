@@ -4151,38 +4151,118 @@ async recolterExpedition(dto: { userId: string }) {
         });
     }
 
-    // 2. Action Admin (Give / Ban / Reset)
+// ... dans game.service.ts
+
     async adminAction(adminId: string, targetId: string, action: string, amount?: number) {
         await this.verifyAdmin(adminId);
         
         let data: any = {};
         let notifMsg = "";
 
-        switch(action) {
-            case 'GIVE_BERRYS':
-                data = { berrys: { increment: amount || 0 } };
-                notifMsg = `L'administration vous a versé ${amount} Berrys.`;
-                break;
-            case 'GIVE_XP':
-                data = { xp: { increment: amount || 0 } };
-                notifMsg = `Vous avez reçu ${amount} XP divine.`;
-                break;
-            case 'BAN':
-                data = { faction: 'BANNIS', equipage_id: null }; // Exemple simple de ban
-                notifMsg = "Votre compte a été suspendu par un administrateur.";
-                break;
-            case 'RESET_ENERGY':
-                data = { energie_actuelle: 10 };
-                notifMsg = "Votre énergie a été restaurée.";
-                break;
-        }
+        // DEBUG : On affiche l'action reçue
+    console.log(`👑 ADMIN ACTION: ${action} sur ${targetId}`);
 
+    switch(action) {
+        case 'GIVE_BERRYS':
+            data = { berrys: { increment: amount || 0 } };
+            notifMsg = `L'administration vous a versé ${amount} Berrys.`;
+            break;
+            
+        case 'GIVE_XP':
+            data = { xp: { increment: amount || 0 } };
+            notifMsg = `Vous avez reçu ${amount} XP divine.`;
+            break;
+            
+        case 'BAN':
+            data = { faction: 'BANNIS', equipage_id: null };
+            notifMsg = "Votre compte a été suspendu.";
+            break;
+            
+        case 'RESET_ENERGY':
+            data = { energie_actuelle: 10 };
+            notifMsg = "Votre énergie a été restaurée.";
+            break;
+
+        case 'RESET_FULL':
+            console.log(`⚠️ RESET TOTAL EN COURS POUR ${targetId}`);
+            
+            try {
+                // 1. D'abord, on supprime TOUTES les données liées (Nettoyage propre)
+                // On utilise deleteMany pour éviter les erreurs si rien n'existe
+                await this.prisma.inventaire.deleteMany({ where: { joueur_id: targetId } });
+                await this.prisma.joueur_titres.deleteMany({ where: { joueur_id: targetId } });
+                await this.prisma.joueur_quetes.deleteMany({ where: { joueur_id: targetId } });
+                await this.prisma.joueur_competences.deleteMany({ where: { joueur_id: targetId } });
+                await this.prisma.demandes_adhesion.deleteMany({ where: { joueur_id: targetId } });
+
+                // 2. On prépare les données de remise à zéro
+                data = { 
+                    // Identité
+                    faction: null, 
+                    titre_actuel: null,
+                    equipage_id: null,
+                    prime: 0, // Prisma convertit le 0 en BigInt automatiquement
+
+                    // Progression
+                    niveau: 1, 
+                    xp: 0, 
+                    berrys: 0, // Ou 100 selon ton schema, mais 0 pour un hard reset c'est mieux
+                    points_carac: 5,
+                    chapitre_actuel: 1,
+                    etape_actuelle: 1,
+                    localisation_id: 1, // Retour case départ
+
+                    // Stats (Valeurs par défaut du schema)
+                    force: 10,
+                    defense: 5,
+                    agilite: 1,
+                    vitalite: 1,
+                    intelligence: 1,
+                    sagesse: 1,
+                    chance: 1,
+                    
+                    // État
+                    pv_actuel: 100, 
+                    pv_max: 100,
+                    pv_max_base: 100, 
+                    energie_actuelle: 10,
+                    
+                    // Combat / PvP
+                    deck_combat: [],
+                    victoires: 0,
+                    defaites: 0,
+                    elo_pvp: 0,
+                    victoires_pvp: 0,
+                    defaites_pvp: 0,
+                    
+                    // Divers Compteurs (BigInt safe)
+                    xp_donnee_equipage: 0,
+                    berrys_depenses_shop: 0,
+                    berrys_mises_casino: 0,
+                    nb_expeditions_reussies: 0,
+                    nb_crafts: 0,
+                    nb_coffres_ouverts: 0,
+                    nb_activites: 0
+                };
+                notifMsg = "⚠️ Votre compte a été entièrement réinitialisé.";
+            } catch (error) {
+                console.error("❌ Erreur pendant le nettoyage du Reset :", error);
+                throw new InternalServerErrorException("Erreur lors du reset des données liées.");
+            }
+            break;
+    }
+
+    // Exécution de la mise à jour
+    try {
         await this.prisma.joueurs.update({ where: { id: targetId }, data });
-        
-        // Notifier la cible
+        // Notification (si ce n'est pas un ban/reset qui supprime l'accès)
         await this.notifyPlayer(targetId, "Message Système", notifMsg, "INFO");
-        
-        return { success: true, message: `Action ${action} effectuée sur ${targetId}` };
+    } catch (e) {
+        console.error("❌ Erreur UPDATE JOUEUR :", e);
+        throw new InternalServerErrorException("Impossible de mettre à jour le joueur.");
+    }
+    
+    return { success: true, message: `Action ${action} effectuée sur ${targetId}` };
     }
 
     // 3. Broadcast (Message à tout le serveur)
@@ -4251,7 +4331,7 @@ async recolterExpedition(dto: { userId: string }) {
                 // Stats de base
                 niveau: 1,
                 xp: 0,
-                berrys: 0, 
+                berrys: 1000, 
                 points_carac: 5, // Pour le tuto
                 
                 // Attributs
