@@ -706,17 +706,31 @@ async getDailyQuests(userId: string) {
         items: rewardItems
     };
 }
-  // ====================================================================
-  // 📈 INVESTIR DES POINTS DE STATS
-  // ====================================================================
 // =================================================================
-  // 💪 INVESTIR DES POINTS (Correction Vitalité : Stop Double Compte)
+  // 🔢 CALCUL DU COÛT DES STATS (Paliers)
+  // =================================================================
+  private getStatCost(stat: string, valeurActuelle: number): number {
+      // Cas spécial : La Vitalité coûte souvent toujours 1 point pour ne pas pénaliser les tanks.
+      // Si tu veux que la vitalité coûte aussi plus cher (2 pour 1, etc.), supprime ces 3 lignes :
+      if (stat === 'vitalite') {
+          return 1; 
+      }
+
+      // PALIERS (Type Dofus/RPG Classique)
+      if (valeurActuelle < 50) return 1;   // 0 à 49   : Coût 1
+      if (valeurActuelle < 100) return 2;  // 50 à 99  : Coût 2
+      if (valeurActuelle < 150) return 3;  // 100 à 149: Coût 3
+      if (valeurActuelle < 200) return 4;  // 150 à 199: Coût 4
+      return 5;                            // 200+     : Coût 5
+  }
+
+  // =================================================================
+  // 📈 INVESTIR DES POINTS (Version Corrigée Paliers)
   // =================================================================
   async investStat(dto: InvestStatDto) {
     const joueur: any = await this.prisma.joueurs.findUnique({ where: { id: dto.userId } });
     
     if (!joueur) throw new BadRequestException("Joueur introuvable");
-    if ((joueur.points_carac ?? 0) <= 0) throw new BadRequestException("Pas assez de points !");
 
     const statsAutorisees = ['force', 'defense', 'vitalite', 'sagesse', 'chance', 'agilite', 'intelligence'];
     const statKey = dto.stat.toLowerCase();
@@ -728,15 +742,22 @@ async getDailyQuests(userId: string) {
     const valeurActuelle = Number(joueur[statKey] ?? 0);
     const nouvelleValeur = valeurActuelle + 1;
 
+    // 1. CALCUL DU COÛT RÉEL
+    const cout = this.getStatCost(statKey, valeurActuelle);
+
+    // 2. VÉRIFICATION DU SOLDE (Correction du Bug)
+    // On vérifie si on a assez de points pour payer LE COÛT (et pas juste > 0)
+    if ((joueur.points_carac ?? 0) < cout) {
+        throw new BadRequestException(`Pas assez de points ! Il faut ${cout} points pour augmenter la ${dto.stat} (Paliers).`);
+    }
+
     const dataUpdate: any = {
-        points_carac: { decrement: 1 },
+        points_carac: { decrement: cout }, // 🔥 CORRECTION : On déduit le coût calculé (1, 2, 3...)
         [statKey]: nouvelleValeur
     };
 
-    // 🔥 CORRECTION : On ne touche PAS à pv_max_base (la formule s'en charge via la vitalité)
-    // On augmente seulement pv_actuel pour "soigner" le gain
+    // Gestion Vitalité (Gain PV actuels pour "soigner" l'augmentation)
     if (statKey === 'vitalite') {
-        // On utilise 'increment' ici, c'est sûr car on ajoute juste 5 PV à la vie actuelle
         dataUpdate.pv_actuel = { increment: 5 }; 
     }
 
@@ -746,7 +767,11 @@ async getDailyQuests(userId: string) {
     });
 
     await this.clearCache(dto.userId);
-    return { success: true, message: `Point investi en ${statKey} ! (Total: ${nouvelleValeur})` };
+    
+    return { 
+        success: true, 
+        message: `+1 ${statKey.toUpperCase()} (Coût: ${cout} pts) -> Total: ${nouvelleValeur}` 
+    };
   }
 // =================================================================
   // 👑 GESTION DES TITRES

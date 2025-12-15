@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom'; // 👈 Import crucial pour sortir du conteneur
+import { createPortal } from 'react-dom';
 import { api } from '../utils/api';
 
 const NotificationWidget = () => {
     const [notifs, setNotifs] = useState([]);
     const [isOpen, setIsOpen] = useState(false);
     
-    // Pour calculer la position
-    const buttonRef = useRef(null);
+    // Références
+    const buttonRef = useRef(null); // Le bouton cloche
+    const listRef = useRef(null);   // 👇 La liste déroulante (Nouveau)
+
     const [coords, setCoords] = useState({ top: 0, left: 0 });
     const [mounted, setMounted] = useState(false);
 
@@ -20,16 +22,25 @@ const NotificationWidget = () => {
         return () => clearInterval(interval);
     }, []);
 
-    // Fermer si on clique ailleurs
+    // --- GESTION DU CLIC EXTÉRIEUR (CORRIGÉE) ---
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (buttonRef.current && !buttonRef.current.contains(event.target) && isOpen) {
-                setIsOpen(false);
-            }
+            // Si le menu n'est pas ouvert, on s'en fiche
+            if (!isOpen) return;
+
+            // Si on clique sur le bouton, on laisse le toggle faire son travail
+            if (buttonRef.current && buttonRef.current.contains(event.target)) return;
+
+            // 👇 ICI LA CORRECTION : Si on clique DANS la liste, on ne ferme pas !
+            if (listRef.current && listRef.current.contains(event.target)) return;
+
+            // Sinon (clic ailleurs dans le vide), on ferme
+            setIsOpen(false);
         };
+
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [isOpen]);
+    }, [isOpen]); // On dépend de isOpen pour activer/désactiver le listener logiquement
 
     const fetchNotifs = async () => {
         try {
@@ -38,28 +49,37 @@ const NotificationWidget = () => {
         } catch (e) { console.error(e); }
     };
 
-    const markAsRead = async (id) => {
+    const markAsRead = async (id, e) => {
+        // Empêche le clic de remonter (sécurité supplémentaire)
+        if (e) e.stopPropagation();
+
         try {
+            // Mise à jour visuelle optimiste (immédiate)
+            setNotifs(prev => prev.map(n => n.id === id ? { ...n, lu: true } : n));
+            
+            // Appel serveur
             await api.post(`/game/notifications/${id}/read`);
-            setNotifs(prev => prev.filter(n => n.id !== id));
-        } catch (e) {}
+        } catch (err) {
+            console.error("Erreur lecture notif", err);
+        }
     };
 
     const toggleOpen = () => {
         if (!isOpen && buttonRef.current) {
-            // Calculer la position exacte du bouton pour placer la liste juste en dessous
             const rect = buttonRef.current.getBoundingClientRect();
             setCoords({
-                top: rect.bottom + 10, // 10px en dessous du bouton
-                left: rect.left // Aligné à gauche du bouton
+                top: rect.bottom + 10,
+                left: rect.left
             });
+            // On rafraîchit la liste à l'ouverture pour être sûr d'être à jour
+            fetchNotifs();
         }
         setIsOpen(!isOpen);
     };
 
     return (
         <>
-            {/* BOUTON CLOCHE (Reste à sa place dans le profil) */}
+            {/* BOUTON CLOCHE */}
             <button 
                 ref={buttonRef}
                 onClick={toggleOpen} 
@@ -74,14 +94,15 @@ const NotificationWidget = () => {
                 )}
             </button>
 
-            {/* LISTE DES NOTIFICATIONS (Téléportée sur le Body pour ne pas être coupée) */}
+            {/* LISTE DES NOTIFICATIONS (Portal) */}
             {mounted && isOpen && createPortal(
                 <div 
+                    ref={listRef} // 👈 On attache la référence ici
                     className="fixed z-[9999] w-80 bg-slate-900/95 backdrop-blur-xl border border-slate-600/50 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] overflow-hidden animate-fadeIn"
                     style={{ 
                         top: coords.top, 
                         left: coords.left,
-                        maxHeight: '400px' // Hauteur max avant scroll
+                        maxHeight: '400px'
                     }}
                 >
                     {/* Header */}
@@ -100,9 +121,10 @@ const NotificationWidget = () => {
                             notifs.map(n => (
                                 <div 
                                     key={n.id} 
-                                    onClick={() => !n.lu && markAsRead(n.id)}
+                                    // On passe l'événement 'e' pour le stopPropagation
+                                    onClick={(e) => !n.lu && markAsRead(n.id, e)}
                                     className={`p-3 border-b border-white/5 text-xs cursor-pointer transition-colors relative group
-                                    ${!n.lu ? 'bg-blue-500/10 hover:bg-blue-500/20' : 'hover:bg-white/5 opacity-70 hover:opacity-100'}`}
+                                    ${!n.lu ? 'bg-blue-500/10 hover:bg-blue-500/20' : 'hover:bg-white/5 opacity-60 grayscale'}`}
                                 >
                                     {!n.lu && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>}
                                     
@@ -118,7 +140,7 @@ const NotificationWidget = () => {
                         )}
                     </div>
                 </div>,
-                document.body // 👈 C'est ici que la magie opère (rendu hors de la sidebar)
+                document.body
             )}
         </>
     );
