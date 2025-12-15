@@ -463,6 +463,13 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                             setLevelUpData={setLevelUpData} // 👈 LA CLÉ
                         />
                           )}
+                          {/* 👇 AJOUTE CE BLOC ICI (par exemple juste après 'aventure' ou à la fin de la liste) 👇 */}
+                        {activeTab === 'ADMIN' && joueur?.role === 'ADMIN' && (
+                            <div className="h-full overflow-y-auto custom-scrollbar p-4">
+                                <AdminTab theme={currentTheme} />
+                            </div>
+                        )}
+                        {/* 👆 FIN DE L'AJOUT 👆 */}
                           
                         {activeTab === 'inventaire' && (
                             <InventoryTab 
