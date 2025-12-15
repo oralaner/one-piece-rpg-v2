@@ -1190,7 +1190,7 @@ async sellItem(dto: SellItemDto) {
   }
 
   // =================================================================
-  // ⚔️ JOUER UN TOUR (AVEC NOTIFICATIONS PVP)
+  // ⚔️ JOUER UN TOUR (NOUVEAU SYSTÈME ELO PAR PALIERS)
   // =================================================================
   async playTurn(dto: PlayTurnDto) {
     const combat = await this.prisma.combats.findUnique({ where: { id: dto.combatId } });
@@ -1221,7 +1221,7 @@ async sellItem(dto: SellItemDto) {
     if (!skill) throw new BadRequestException("Compétence inconnue.");
 
     // =================================================================
-    // 📊 CALCUL DES STATS TOTALES
+    // 📊 CALCUL DES STATS (Inchangé)
     // =================================================================
     const statsAtk = this.calculatePlayerStats(attaquant);
     const statsAdv = this.calculatePlayerStats(adversaire);
@@ -1236,7 +1236,7 @@ async sellItem(dto: SellItemDto) {
     }
 
     // =================================================================
-    // 🛡️ DÉTECTION SKILL
+    // 🛡️ DÉTECTION SKILL (Inchangé)
     // =================================================================
     const armeEquipee = attaquant.inventaire.find(i => i.est_equipe && i.objets.type_equipement === 'MAIN_DROITE');
     const nomArme = (armeEquipee?.objets?.nom || "").toUpperCase();
@@ -1262,7 +1262,7 @@ async sellItem(dto: SellItemDto) {
     }
 
     // =================================================================
-    // 💥 CALCUL DÉGÂTS JOUEUR
+    // 💥 CALCUL DÉGÂTS JOUEUR (Inchangé)
     // =================================================================
     let statUtilisee = statsAtk.force; 
     if (skillCategory === 'DISTANCE') statUtilisee = statsAtk.agilite;
@@ -1281,29 +1281,43 @@ async sellItem(dto: SellItemDto) {
     const logJ = `Tu utilises ${skill.nom} et infliges ${degatsJoueur} dégâts !`;
 
     // -----------------------------------------------------------
-    // 🏆 HELPER ELO
+    // 🏆 CALCULATEUR ELO PAR PALIERS (Custom Logic)
     // -----------------------------------------------------------
-    const calculateEloChange = (joueurElo: number, advElo: number, isVictory: boolean) => {
-        const K = 32;
-        const expectedScore = 1 / (1 + Math.pow(10, (advElo - joueurElo) / 400));
-        const actualScore = isVictory ? 1 : 0;
-        let change = Math.round(K * (actualScore - expectedScore));
-        if (isVictory) change = Math.max(5, Math.min(30, change));
-        else change = Math.max(-30, Math.min(-5, change));
-        return change;
+    const calculateEloCustom = (joueurElo: number, advElo: number, isVictory: boolean): number => {
+        const diff = advElo - joueurElo; // Positif = Adv plus fort, Négatif = Adv plus faible
+
+        if (isVictory) {
+            // VICTOIRE (Gain)
+            if (diff >= 301) return 50;  // David contre Goliath
+            if (diff >= 201) return 30;
+            if (diff >= 101) return 20;
+            if (diff >= -100) return 15; // Équilibré (-100 à +100)
+            if (diff >= -200) return 10; // Un peu plus faible
+            if (diff >= -300) return 5;  // Beaucoup plus faible
+            return 1;                    // Massacre de noob (diff < -301)
+        } else {
+            // DÉFAITE (Perte - Attention chiffre négatif)
+            if (diff >= 301) return -5;  // Perdre contre un Titan (pardonnable)
+            if (diff >= 201) return -5;
+            if (diff >= 101) return -10;
+            if (diff >= -100) return -15; // Équilibré (-100 à +100)
+            if (diff >= -200) return -20; // Perdre contre plus faible
+            if (diff >= -300) return -30; // Honteux
+            return -50;                   // Très Honteux (diff < -301)
+        }
     };
 
-    // --- VICTOIRE JOUEUR ---
+    // --- VICTOIRE DE L'ATTAQUANT (JOUEUR) ---
     if (pvAdvRestant <= 0) {
         const gainXp = 50 * (adversaire.niveau ?? 1);
         const gainBerrys = 100 * (adversaire.niveau ?? 1);
         
         let gainElo = 0;
-        let perteEloAdv = 0;
+        // En cas de victoire de l'attaquant, le défenseur perd 0 (Défense auto ne perd pas de LP)
+        let perteEloAdv = 0; 
 
         if (!adversaire.is_bot) {
-            gainElo = calculateEloChange(attaquant.elo_pvp ?? 1000, adversaire.elo_pvp ?? 1000, true);
-            perteEloAdv = -gainElo; 
+            gainElo = calculateEloCustom(attaquant.elo_pvp ?? 1000, adversaire.elo_pvp ?? 1000, true);
         }
 
         const { updateData, levelsGained, newLevel } = this.calculateLevelUp(attaquant, gainXp);
@@ -1339,18 +1353,18 @@ async sellItem(dto: SellItemDto) {
                 this.prisma.joueurs.update({
                     where: { id: adversaire.id },
                     data: { 
-                        elo_pvp: { increment: perteEloAdv },
+                        // Le défenseur ne perd PAS de points en défense auto
                         defaites_pvp: { increment: 1 },
                         defaites: { increment: 1 }
                     }
                 })
             );
 
-            // 👇 NOTIFICATION DEFENSEUR (DÉFAITE) 👇
+            // Notification pour le défenseur (sans perte de LP)
             await this.notifyPlayer(
                 adversaire.id,
                 "⚔️ Défaite défensive",
-                `Vous avez été attaqué par ${attaquant.pseudo} et vous avez perdu. Votre honneur (Elo) en prend un coup (-${Math.abs(perteEloAdv)} LP).`,
+                `Vous avez été attaqué par ${attaquant.pseudo} et vous avez perdu. Heureusement, grâce à la défense automatique, vous n'avez perdu aucun LP.`,
                 "WARNING"
             );
         }
@@ -1374,7 +1388,7 @@ async sellItem(dto: SellItemDto) {
     }
 
     // =================================================================
-    // 🤖 TOUR ADVERSAIRE (IA)
+    // 🤖 TOUR ADVERSAIRE (IA / DÉFENSE AUTO)
     // =================================================================
     let degatsIA = Math.floor( forceBot * (0.8 + Math.random() * 0.4) ) - Math.floor(statsAtk.defense / 3);
     if (degatsIA < 1) degatsIA = 1;
@@ -1384,16 +1398,19 @@ async sellItem(dto: SellItemDto) {
 
     const logIA = `${adversaire.pseudo} attaque et t'inflige ${degatsIA} dégâts !`;
 
-    // --- DÉFAITE JOUEUR ---
+    // --- DÉFAITE DE L'ATTAQUANT (JOUEUR) ---
     if (pvJoueurRestant <= 0) {
         const perteBerrys = Math.floor((attaquant.berrys || 0) * 0.50);
         const gainXpConsolation = 10;
         
-        let perteElo = 0;
-        let gainEloAdv = 0;
+        let perteElo = 0;   // Ce que l'attaquant perd (valeur négative)
+        let gainEloAdv = 0; // Ce que le défenseur gagne
 
         if (!adversaire.is_bot) {
-            perteElo = calculateEloChange(attaquant.elo_pvp ?? 1000, adversaire.elo_pvp ?? 1000, false);
+            // Calcul de la perte pour l'attaquant
+            perteElo = calculateEloCustom(attaquant.elo_pvp ?? 1000, adversaire.elo_pvp ?? 1000, false);
+            
+            // Le défenseur gagne l'équivalent de la perte (en positif)
             gainEloAdv = Math.abs(perteElo); 
         }
 
@@ -1402,7 +1419,7 @@ async sellItem(dto: SellItemDto) {
         updateData.defaites = { increment: 1 };
         updateData.pv_actuel = 0;
         updateData.berrys = { decrement: perteBerrys };
-        updateData.elo_pvp = { increment: perteElo };
+        updateData.elo_pvp = { increment: perteElo }; // Applique la perte
         
         if (adversaire.is_bot) updateData.defaites_pve = { increment: 1 };
         else updateData.defaites_pvp = { increment: 1 };
@@ -1432,18 +1449,18 @@ async sellItem(dto: SellItemDto) {
                 this.prisma.joueurs.update({
                     where: { id: adversaire.id },
                     data: { 
-                        elo_pvp: { increment: gainEloAdv }, 
+                        elo_pvp: { increment: gainEloAdv }, // Le défenseur GAGNE des points
                         victoires_pvp: { increment: 1 },
                         victoires: { increment: 1 }
                     }
                 })
             );
 
-            // 👇 NOTIFICATION DEFENSEUR (VICTOIRE) 👇
+            // Notification pour le défenseur (Victoire)
             await this.notifyPlayer(
                 adversaire.id,
                 "🛡️ Défense réussie !",
-                `Votre personnage a repoussé une attaque de ${attaquant.pseudo} pendant votre absence ! (+${gainEloAdv} LP)`,
+                `Votre personnage a repoussé une attaque de ${attaquant.pseudo} pendant votre absence ! Vous gagnez +${gainEloAdv} LP !`,
                 "SUCCESS"
             );
         }
