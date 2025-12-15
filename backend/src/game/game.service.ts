@@ -3369,7 +3369,50 @@ private calculatePlayerStats(joueur: any) {
   }
 // Dans backend/src/game/game.service.ts
 
+// =================================================================
+  // 💬 GESTION DES MENTIONS TCHAT (@Pseudo)
+  // =================================================================
+  async processChatMentions(senderId: string, content: string) {
+      // 1. On récupère le pseudo de l'envoyeur
+      const sender = await this.prisma.joueurs.findUnique({ 
+          where: { id: senderId }, 
+          select: { pseudo: true } 
+      });
+      if (!sender) return;
 
+      // 2. Regex pour trouver les @Pseudo (ex: @Luffy, @Zoro123)
+      // \w+ capture lettres, chiffres et underscores
+      const mentionRegex = /@(\w+)/g;
+      const matches = content.match(mentionRegex);
+
+      if (!matches || matches.length === 0) return;
+
+      // 3. Nettoyage et Dé-duplication
+      // On retire le '@' et on utilise un Set pour éviter de notifier 3 fois si on écrit "@Zoro @Zoro @Zoro"
+      const uniquePseudos = [...new Set(matches.map(m => m.slice(1)))];
+
+      // 4. Recherche des cibles en BDD
+      const targets = await this.prisma.joueurs.findMany({
+          where: {
+              pseudo: { in: uniquePseudos, mode: 'insensitive' }, // "luffy" marchera pour "Luffy"
+              id: { not: senderId } // On évite l'auto-mention
+          },
+          select: { id: true }
+      });
+
+      // 5. Envoi des notifications
+      // On coupe le message s'il est trop long pour la notif
+      const previewMsg = content.length > 40 ? content.slice(0, 37) + '...' : content;
+
+      for (const target of targets) {
+          await this.notifyPlayer(
+              target.id,
+              "💬 On parle de vous !",
+              `${sender.pseudo} vous a mentionné : "${previewMsg}"`,
+              "INFO"
+          );
+      }
+  }
   
 // =================================================================
   // 🧠 HELPER : CALCUL DU PASSAGE DE NIVEAU (CORRIGÉ)

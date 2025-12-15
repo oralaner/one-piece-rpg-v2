@@ -24,7 +24,7 @@ import { JoinCrewDto, RecruitDto, KickDto, } from './crew-manage.dto';
 import { UpdateCrewDto } from './crew-manage.dto';
 import { GameGateway } from './game.gateway';
 import { UseItemDto } from './use-item.dto';
-import { OpenChestDto } from './crew-manage.dto'; // Vérifie que le chemin est bon, sinon laisse tel quel
+import { OpenChestDto } from './crew-manage.dto'; 
 import { StoryService } from './story.service';
 
 class UserIdDto { userId: string; }
@@ -51,19 +51,14 @@ export class GameController {
   @Get('player/me')
   async getMyProfile(
     @User() userId: string,
-    @User('pseudo') discordPseudo: string, // ✨ Récupère le pseudo Discord
-    @User('avatarUrl') discordAvatar: string // ✨ Récupère l'avatar Discord
+    @User('pseudo') discordPseudo: string, 
+    @User('avatarUrl') discordAvatar: string 
   ) {
-    if (!userId) {
-        console.error("❌ [CONTROLLER] ERREUR : L'ID est undefined ou null !");
-    }
-
-    // On passe les infos au service pour la création auto
+    if (!userId) console.error("❌ [CONTROLLER] ERREUR : L'ID est undefined ou null !");
+    
     const result = await this.gameService.getPlayerData(userId, discordPseudo, discordAvatar);
     
-    if (!result) {
-        console.error("⚠️ [CONTROLLER] Service a renvoyé null/undefined");
-    }
+    if (!result) console.error("⚠️ [CONTROLLER] Service a renvoyé null/undefined");
 
     return result;
   }
@@ -360,7 +355,6 @@ export class GameController {
     return this.gameService.recolterExpedition({ userId });
   }
 
-  // Note: Cette route est probablement redondante avec /create, mais on la garde pour compatibilité si besoin
   @Post('faction/choose')
   @UseGuards(AuthGuard('jwt'))
   async chooseFaction(@User() userId: string, @Body() body: { faction: string }) {
