@@ -85,11 +85,25 @@ const AdminTab = ({ theme }) => {
                                     <td className="p-3">{p.niveau}</td>
                                     <td className="p-3 text-yellow-500">{p.berrys.toLocaleString()}</td>
                                     <td className="p-3 text-right flex justify-end gap-1">
-                                        <button onClick={() => handleAction(p.id, 'GIVE_BERRYS', 100000)} className="bg-green-900/50 text-green-300 px-2 py-1 rounded border border-green-800 hover:bg-green-800" title="+100k Berrys">💰</button>
-                                        <button onClick={() => handleAction(p.id, 'GIVE_XP', 5000)} className="bg-blue-900/50 text-blue-300 px-2 py-1 rounded border border-blue-800 hover:bg-blue-800" title="+5k XP">⭐</button>
-                                        <button onClick={() => handleAction(p.id, 'RESET_ENERGY')} className="bg-yellow-900/50 text-yellow-300 px-2 py-1 rounded border border-yellow-800 hover:bg-yellow-800" title="Reset Energie">⚡</button>
-                                        <button onClick={() => handleAction(p.id, 'BAN')} className="bg-red-900/50 text-red-300 px-2 py-1 rounded border border-red-800 hover:bg-red-800" title="Bannir">🚫</button>
-                                    </td>
+                                    <button onClick={() => handleAction(p.id, 'GIVE_BERRYS', 100000)} className="bg-green-900/50 text-green-300 px-2 py-1 rounded border border-green-800 hover:bg-green-800" title="+100k Berrys">💰</button>
+                                    <button onClick={() => handleAction(p.id, 'GIVE_XP', 5000)} className="bg-blue-900/50 text-blue-300 px-2 py-1 rounded border border-blue-800 hover:bg-blue-800" title="+5k XP">⭐</button>
+                                    <button onClick={() => handleAction(p.id, 'RESET_ENERGY')} className="bg-yellow-900/50 text-yellow-300 px-2 py-1 rounded border border-yellow-800 hover:bg-yellow-800" title="Full Énergie">⚡</button>
+                                    
+                                    {/* 👇 NOUVEAU BOUTON RESET 👇 */}
+                                    <button 
+                                        onClick={() => {
+                                            if(confirm("ATTENTION : Ceci va remettre le compte à ZERO (Niv 1, sans faction, sans inventaire). Continuer ?")) {
+                                                handleAction(p.id, 'RESET_FULL');
+                                            }
+                                        }} 
+                                        className="bg-orange-900/50 text-orange-300 px-2 py-1 rounded border border-orange-800 hover:bg-orange-800" 
+                                        title="RESET TOTAL (Niv 1)"
+                                    >
+                                        ♻️
+                                    </button>
+
+                                    <button onClick={() => handleAction(p.id, 'BAN')} className="bg-red-900/50 text-red-300 px-2 py-1 rounded border border-red-800 hover:bg-red-800" title="Bannir">🚫</button>
+                                </td>
                                 </tr>
                             ))}
                         </tbody>

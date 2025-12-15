@@ -264,6 +264,8 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                     {/* Header Profil */}
                     <div className="flex items-center gap-4 mb-4">
                         <div className="relative group shrink-0">
+                            {/* 🔥 WIDGET NOTIFICATIONS 🔥 */}
+                            <NotificationWidget />
                             <div className={`rounded-full p-[3px] ${currentTheme.btnPrimary} shadow-lg shadow-black/50 transition-transform group-hover:scale-105 duration-300`}>
                                 <div className="w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden bg-slate-900 border border-black/30 relative z-10">
                                     {joueur.avatar_url && <img src={joueur.avatar_url} className="w-full h-full object-cover"/>}
@@ -360,9 +362,9 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                     
                     {/* Espace vide pour le menu mobile en bas */}
                     <div className="h-20 md:hidden"></div>
+                    
                 </div>
-                {/* 🔥 WIDGET NOTIFICATIONS 🔥 */}
-                    <NotificationWidget />
+                
 
                     {/* 🔥 BOUTON ADMIN (Visible seulement si admin) 🔥 */}
                     {joueur?.role === 'ADMIN' && (
