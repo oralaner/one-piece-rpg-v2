@@ -4246,21 +4246,32 @@ async recolterExpedition(dto: { userId: string }) {
         return { count: allIds.length, success: true };
     }
 
-    // 4. Gestion Notifications
-    async getMyNotifications(userId: string) {
-        return this.prisma.notifications.findMany({
-            where: { joueur_id: userId },
-            orderBy: { created_at: 'desc' },
-            take: 20
-        });
-    }
+// 1. Récupérer mes notifications (Triées : Non lues d'abord, puis par date)
+  async getMyNotifications(userId: string) {
+      return this.prisma.notifications.findMany({
+          where: { joueur_id: userId },
+          orderBy: [
+              { lu: 'asc' },        // Les "False" (Non lues) en premier
+              { created_at: 'desc' } // Les plus récentes en premier
+          ],
+          take: 50 // On ne récupère que les 50 dernières pour ne pas surcharger
+      });
+  }
 
-    async readNotification(userId: string, notifId: string) {
-        const notif = await this.prisma.notifications.findUnique({ where: { id: notifId } });
-        if (!notif || notif.joueur_id !== userId) return;
-        return this.prisma.notifications.update({ where: { id: notifId }, data: { lu: true } });
-    }
+  // 2. Marquer une notification comme lue
+  async readNotification(userId: string, notificationId: string) {
+      // On utilise updateMany pour s'assurer que la notif appartient bien au joueur
+      // (Sécurité : ça évite qu'un joueur valide les notifs d'un autre)
+      await this.prisma.notifications.updateMany({
+          where: { 
+              id: notificationId, 
+              joueur_id: userId 
+          },
+          data: { lu: true }
+      });
 
+      return { success: true };
+  }
     // Helper interne
     async notifyPlayer(userId: string, titre: string, message: string, type = 'INFO') {
         return this.prisma.notifications.create({

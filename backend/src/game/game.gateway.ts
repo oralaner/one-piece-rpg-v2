@@ -10,11 +10,10 @@ import {
 import { Server, Socket } from 'socket.io';
 import { GameService } from './game.service';
 import { PrismaService } from '../prisma.service';
-import { PlayTurnDto } from './play-turn.dto'; // Import du DTO combat
+import { PlayTurnDto } from './play-turn.dto';
 
 @WebSocketGateway({
   cors: {
-    // 👇 IDEM : URL VERCEL EXACTE
     origin: [
       'https://one-piece-rpg-v2.vercel.app', 
       'http://localhost:3000'
@@ -32,14 +31,12 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly prisma: PrismaService
   ) {}
 
-afterInit(server: Server) {
+  afterInit(server: Server) {
     console.log('✅ Socket.io Initialisé !');
   }
 
   handleConnection(client: Socket, ...args: any[]) {
     console.log(`🔌 Client connecté : ${client.id}`);
-    // Logs pour déboguer les Query params
-    console.log('Query:', client.handshake.query);
   }
 
   handleDisconnect(client: Socket) {
@@ -59,9 +56,10 @@ afterInit(server: Server) {
     client.leave(data.room);
   }
 
-  // --- TCHAT (Déjà fait) ---
+  // --- TCHAT ---
   @SubscribeMessage('sendMessage')
   async handleMessage(@MessageBody() data: any) {
+    // 1. Sauvegarde en BDD
     const savedMessage = await this.prisma.messages.create({
       data: {
         joueur_id: data.userId,
@@ -72,7 +70,17 @@ afterInit(server: Server) {
         date_envoi: new Date(),
       },
     });
+
+    // 2. Diffusion à la room (Temps réel)
     this.server.to(data.room).emit('newMessage', savedMessage);
+
+    // 3. 👇 GESTION DES NOTIFICATIONS DE MENTIONS (@Pseudo) 👇
+    try {
+        // On ne bloque pas l'envoi du message si ça échoue, donc on ne met pas de await bloquant ou on gère l'erreur
+        await this.gameService.processChatMentions(data.userId, data.contenu);
+    } catch (e) {
+        console.error("Erreur lors de la notification de mention:", e);
+    }
   }
 
   // --- COMBAT TEMPS RÉEL ⚔️ ---
@@ -85,23 +93,19 @@ afterInit(server: Server) {
   @SubscribeMessage('combatAction')
   async handleCombatAction(@MessageBody() dto: PlayTurnDto) {
     try {
-      // 1. On exécute la logique du tour (la même qu'avant)
+      // 1. On exécute la logique du tour
       const result = await this.gameService.playTurn(dto);
 
-      // 2. On diffuse le résultat à TOUS les participants du combat (Moi + Adversaire)
+      // 2. On diffuse le résultat à TOUS les participants du combat
       this.server.to(`combat_${dto.combatId}`).emit('combatUpdate', result);
       
     } catch (e) {
-      // Si erreur, on l'envoie juste à celui qui a cliqué
-      // (Il faudra gérer l'écoute de 'error' côté front)
       console.error(e);
     }
   }
 
   // --- RAID TEMPS RÉEL 🏴‍☠️ ---
   
-  // Cette méthode permet au Service d'envoyer des notifs (ex: quand quelqu'un rejoint le raid via HTTP)
-  // On l'appellera depuis GameService
   emitCrewUpdate(crewId: string) {
     this.server.to(`EQUIPAGE_${crewId}`).emit('crewUpdate');
   }
