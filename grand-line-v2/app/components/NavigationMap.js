@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Anchor, Navigation, Swords, ShoppingBag, Beer, Hammer, ZoomIn, ZoomOut, Compass, MapPin } from 'lucide-react';
 
 // 📐 CONFIGURATION DE L'IMAGE
-const MAP_IMAGE_URL = "/images/world_map.jpg";
+const MAP_IMAGE_URL = "/world_map.jpg";
 const MAP_WIDTH = 3000;  // Largeur réelle de l'image
 const MAP_HEIGHT = 1630; // Hauteur réelle (ajustée pour le ratio de ton image one piece)
 
