@@ -198,7 +198,7 @@ export const useGameLogic = () => {
         
         casinoState, cooldowns, jouerCasino, allItemDefinitions,
         
-        competences, mesCompetences, acheterCompetence, equiperCompetence, eveillerHaki, voyager, ameliorerNavire,
+        competences, mesCompetences, acheterCompetence, equiperCompetence, eveillerHaki, ameliorerNavire,
         
         messages, chatChannel, setChatChannel, envoyerMessage, topJoueurs, topEquipages, 
         leaderboardType, setLeaderboardType, changerLeaderboard,
