@@ -206,8 +206,6 @@ export const useGameLogic = () => {
         
         investirStat, tempsRestant, explorationLoading, clickActivite, fetchJoueur: rafraichirDonnees, meteoData,
         notify,
-        
-        lancerCombatHistoire,
 
         // Sécurité pour l'objet joueur s'il est null
         joueur: playerData ? {
