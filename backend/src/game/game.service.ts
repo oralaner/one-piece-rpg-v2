@@ -4258,23 +4258,58 @@ async getMapData(userId: string) {
     };
   }
 
-  // 2. LANCER UN VOYAGE (Calcul Distance & Temps)
+// =================================================================
+  // 2. LANCER UN VOYAGE (Avec Auto-Réparation "Vaisseau Fantôme")
+  // =================================================================
   async startTravel(userId: string, destinationId: number) {
     const joueur = await this.prisma.joueurs.findUnique({ 
         where: { id: userId },
-        include: { localisation: true } // On a besoin de savoir d'où il part
+        include: { localisation: true } 
     });
 
     if (!joueur) throw new BadRequestException("Joueur inconnu.");
-    if (joueur.statut_voyage === 'EN_MER') throw new BadRequestException("Tu navigues déjà !");
-    if (!joueur.localisation) throw new BadRequestException("Position inconnue (Bug).");
+
+    // 🚨 BLOCK AUTO-RÉPARATION 🚨
+    // Si le joueur n'a pas de localisation (bug) et n'est pas censé être en mer (ou est coincé)
+    if (!joueur.localisation) {
+        console.log(`🚑 Tentative de réparation du joueur ${joueur.pseudo} (Position NULL)...`);
+        
+        // 1. On cherche l'île de départ (Fushia)
+        const spawnPoint = await this.prisma.destinations.findFirst({
+            where: { nom: { contains: 'Fushia', mode: 'insensitive' } } // Recherche souple
+        });
+
+        if (spawnPoint) {
+            // 2. On force la mise à jour
+            await this.prisma.joueurs.update({
+                where: { id: userId },
+                data: { 
+                    localisation_id: spawnPoint.id, 
+                    statut_voyage: 'A_QUAI',
+                    trajet_fin: null,
+                    trajet_depart_id: null,
+                    trajet_arrivee_id: null
+                }
+            });
+            // 3. On prévient le joueur qu'il a été réparé
+            throw new BadRequestException("🚩 Position recalibrée au Village de Fushia (Bug corrigé). Veuillez réessayer le voyage.");
+        } else {
+            // Si même Fushia n'existe pas, c'est grave (Seed échoué ?)
+            throw new BadRequestException("⛔ Erreur critique : Aucune île de départ trouvée. Contactez l'admin.");
+        }
+    }
+    // 🚨 FIN DU BLOCK 🚨
+
+    // Vérifications classiques
+    if (joueur.statut_voyage === 'EN_MER') throw new BadRequestException("Tu navigues déjà ! Attends d'arriver.");
     if (joueur.localisation.id === destinationId) throw new BadRequestException("Tu y es déjà.");
 
     const destination = await this.prisma.destinations.findUnique({ where: { id: destinationId } });
     if (!destination) throw new BadRequestException("Destination inconnue.");
 
     // --- CALCUL DE DISTANCE (Pythagore) ---
-    const x1 = joueur.localisation.pos_x;
+    // Maintenant on est sûr que joueur.localisation existe grâce au fix plus haut
+    const x1 = joueur.localisation.pos_x; 
     const y1 = joueur.localisation.pos_y;
     const x2 = destination.pos_x;
     const y2 = destination.pos_y;
@@ -4287,7 +4322,7 @@ async getMapData(userId: string) {
     // Bonus vitesse navire : +10% par niveau de navire
     const vitesseNavire = 10 * (1 + ((joueur.niveau_navire || 1) * 0.1));
     
-    // Temps en minutes = Distance / Vitesse * Facteur d'échelle (ex: 5 pour rendre ça plus lent/rapide)
+    // Temps en minutes = Distance / Vitesse * Facteur d'échelle
     let dureeMinutes = Math.ceil((distance / vitesseNavire) * 5);
     
     // Minimum 1 minute de trajet
@@ -4296,7 +4331,7 @@ async getMapData(userId: string) {
     // Calcul de la date d'arrivée
     const arrivalTime = new Date(Date.now() + dureeMinutes * 60 * 1000);
 
-    // Mise à jour BDD
+    // Mise à jour BDD : DÉPART
     await this.prisma.joueurs.update({
         where: { id: userId },
         data: {
@@ -4315,7 +4350,6 @@ async getMapData(userId: string) {
         arrivalTime: arrivalTime
     };
   }
-
   // 3. VÉRIFIER L'ARRIVÉE (Appelé par le front ou périodiquement)
   async checkTravelArrival(userId: string) {
     const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId } });
