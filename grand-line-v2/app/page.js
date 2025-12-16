@@ -99,7 +99,7 @@ export default function Home() {
             case 'inventaire': return isBefore(1, 5);
             case 'deck':       return isBefore(1, 7);
             case 'chantier': 
-            case 'expeditions': 
+            case 'map': 
                 return chap < 2; 
             case 'boutique':   return isBefore(2, 3);
             case 'marche':     return isBefore(3, 3);
@@ -185,7 +185,7 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
         { id: 'stats', icon: '📊', label: 'Stats' },
         { id: 'inventaire', icon: '🎒', label: 'Sac' },
         { id: 'deck', icon: '📘', label: 'Skills' },
-        { id: 'expeditions', icon: '🧭', label: 'Map' },
+        { id: 'map', icon: '🧭', label: 'Carte' },
         { id: 'chantier', icon: '⛵', label: 'Navire' },   
         { id: 'boutique', icon: '🏪', label: 'Shop' },
         { id: 'marche', icon: '⚖️', label: 'HDV' },
