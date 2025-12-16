@@ -1,14 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { api } from '../utils/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Anchor, Navigation, Swords, ShoppingBag, Beer, Hammer, ZoomIn, ZoomOut, Compass, MapPin } from 'lucide-react';
 
-// 📐 CONFIGURATION POUR TA CARTE
-const MAP_IMAGE_URL = "/world_map.jpg"; // Assure-toi que l'image est ici
-const MAP_WIDTH = 3000;  // Largeur de l'image (en pixels) pour une bonne résolution
-const MAP_HEIGHT = 1500; // Hauteur approximative (ratio 2:1 pour cette image)
-const RATIO_X = 10;      // Multiplicateur pour l'axe X (Base de données -> Pixels)
-const RATIO_Y = 13;      // Multiplicateur pour l'axe Y (souvent besoin d'être un peu plus grand pour remplir la hauteur)
+// 📐 CONFIGURATION DE L'IMAGE
+const MAP_IMAGE_URL = "/images/world_map.jpg";
+const MAP_WIDTH = 3000;  // Largeur réelle de l'image
+const MAP_HEIGHT = 1630; // Hauteur réelle (ajustée pour le ratio de ton image one piece)
+
+// 📐 CONFIGURATION DES COORDONNÉES (BDD -> PIXELS)
+// Si ta BDD a des X de 0 à 300 et Y de 0 à 100 :
+const RATIO_X = 10;      // 300 * 10 = 3000px
+const RATIO_Y = 15;      // 100 * 15 = 1500px (environ)
 
 const NavigationMap = () => {
     const [loading, setLoading] = useState(true);
@@ -16,11 +19,16 @@ const NavigationMap = () => {
     const [selectedIsland, setSelectedIsland] = useState(null);
     const [travelTimer, setTravelTimer] = useState(null);
     
-    // 🔍 État du Zoom et Position
+    // --- GESTION DU ZOOM ET DRAG ---
+    const containerRef = useRef(null);
     const [scale, setScale] = useState(1);
-    const constraintsRef = useRef(null);
+    const [minScale, setMinScale] = useState(0.5);
+    const [constraints, setConstraints] = useState({ left: 0, right: 0, top: 0, bottom: 0 });
+    // On stocke la position x/y pour éviter les reset brutaux lors du zoom
+    const [x, setX] = useState(0);
+    const [y, setY] = useState(0);
 
-    // Récupération des données
+    // 1. Chargement des données
     const fetchMap = async () => {
         try {
             const data = await api.get('/game/map');
@@ -38,14 +46,14 @@ const NavigationMap = () => {
                 const status = await api.get('/game/map/status');
                 if (status.status === 'ARRIVED') {
                     fetchMap();
-                    alert(status.message); // À remplacer par un joli Toast notification plus tard
+                    alert(status.message);
                 }
             }
         }, 5000);
         return () => clearInterval(interval);
     }, [mapData?.travelStatus?.state]);
 
-    // Timer visuel
+    // Timer Voyage
     useEffect(() => {
         if (mapData?.travelStatus?.state === 'EN_MER' && mapData?.travelStatus?.arrivalTime) {
             const interval = setInterval(() => {
@@ -57,6 +65,52 @@ const NavigationMap = () => {
             return () => clearInterval(interval);
         }
     }, [mapData]);
+
+    // 2. CALCUL DES CONTRAINTES (Le cœur du fix "Bords Blancs")
+    useLayoutEffect(() => {
+        if (!containerRef.current) return;
+
+        const updateConstraints = () => {
+            const { width: containerW, height: containerH } = containerRef.current.getBoundingClientRect();
+            
+            // Calcul du zoom minimum pour couvrir tout l'écran (Cover)
+            const minScaleX = containerW / MAP_WIDTH;
+            const minScaleY = containerH / MAP_HEIGHT;
+            const newMinScale = Math.max(minScaleX, minScaleY);
+            
+            setMinScale(newMinScale);
+            
+            // Si le scale actuel est trop petit, on le remonte
+            if (scale < newMinScale) setScale(newMinScale);
+
+            // Calcul des limites de déplacement (négatives car on tire la map)
+            // Formule : La map ne doit pas aller plus loin que sa taille zoomée moins la taille du container
+            const xLimit = -((MAP_WIDTH * scale) - containerW);
+            const yLimit = -((MAP_HEIGHT * scale) - containerH);
+
+            setConstraints({
+                left: xLimit,
+                right: 0,
+                top: yLimit,
+                bottom: 0
+            });
+        };
+
+        updateConstraints();
+        window.addEventListener('resize', updateConstraints);
+        return () => window.removeEventListener('resize', updateConstraints);
+    }, [scale]); // Recalcule quand le zoom change
+
+    const handleZoom = (direction) => {
+        const step = 0.2;
+        let newScale = direction === 'in' ? scale + step : scale - step;
+        
+        // Bornes
+        newScale = Math.min(newScale, 3); // Max zoom x3
+        newScale = Math.max(newScale, minScale); // Min zoom (cover)
+
+        setScale(newScale);
+    };
 
     const handleTravel = async () => {
         if (!selectedIsland) return;
@@ -85,10 +139,10 @@ const NavigationMap = () => {
 
     const getPinColor = (type) => {
         switch(type) {
-            case 'VILLE': return 'text-blue-400 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]';
-            case 'SAUVAGE': return 'text-green-500 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]';
-            case 'DONJON': return 'text-purple-500 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]';
-            case 'QG_MARINE': return 'text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]';
+            case 'VILLE': return 'text-blue-400 fill-blue-900/50';
+            case 'SAUVAGE': return 'text-emerald-500 fill-emerald-900/50';
+            case 'DONJON': return 'text-purple-500 fill-purple-900/50';
+            case 'QG_MARINE': return 'text-white fill-blue-800';
             case 'EVENT': return 'text-yellow-500 animate-bounce';
             default: return 'text-gray-400';
         }
@@ -100,80 +154,82 @@ const NavigationMap = () => {
     const isSailing = travelStatus.state === 'EN_MER';
 
     return (
-        <div className="relative w-full h-[calc(100vh-140px)] md:h-full bg-slate-900 overflow-hidden rounded-xl border border-slate-700 shadow-2xl group">
+        // Conteneur principal (La fenêtre de vue)
+        <div ref={containerRef} className="relative w-full h-[calc(100vh-140px)] md:h-full bg-slate-900 overflow-hidden rounded-xl border border-slate-700 shadow-2xl group">
             
-            {/* 🎮 CONTRÔLES DE ZOOM (Flottants) */}
-            <div className="absolute top-4 right-4 z-50 flex flex-col gap-2 bg-black/80 p-2 rounded-lg backdrop-blur-md border border-white/10 shadow-xl">
-                <button onClick={() => setScale(Math.min(scale + 0.3, 3))} className="p-2 hover:bg-white/20 rounded text-white active:scale-95 transition"><ZoomIn size={20} /></button>
-                <span className="text-center text-[10px] text-slate-300 font-mono font-bold">{Math.round(scale * 100)}%</span>
-                <button onClick={() => setScale(Math.max(scale - 0.3, 0.5))} className="p-2 hover:bg-white/20 rounded text-white active:scale-95 transition"><ZoomOut size={20} /></button>
+            {/* 🎮 HUD CONTROLES ZOOM */}
+            <div className="absolute top-4 right-4 z-[100] flex flex-col gap-2 bg-black/80 p-2 rounded-lg backdrop-blur-md border border-white/10 shadow-xl">
+                <button onClick={() => handleZoom('in')} className="p-2 hover:bg-white/20 rounded text-white active:scale-95 transition"><ZoomIn size={20} /></button>
+                <button onClick={() => handleZoom('out')} className="p-2 hover:bg-white/20 rounded text-white active:scale-95 transition"><ZoomOut size={20} /></button>
                 <div className="h-px bg-white/20 my-1"></div>
-                <button onClick={() => setScale(1)} className="p-2 hover:bg-white/20 rounded text-yellow-400 active:scale-95 transition" title="Recentrer"><Compass size={20} /></button>
+                <button onClick={() => setScale(minScale)} className="p-2 hover:bg-white/20 rounded text-yellow-400 active:scale-95 transition" title="Vue d'ensemble"><Compass size={20} /></button>
             </div>
 
-            {/* 📦 REFERENCE POUR LE DRAG (Limites) */}
-            <div ref={constraintsRef} className="absolute inset-0 pointer-events-none" />
-
-            {/* 🗺️ CARTE INTERACTIVE */}
+            {/* 🗺️ LE CANEVAS QUI BOUGE */}
             <motion.div 
                 drag
-                dragConstraints={constraintsRef}
-                dragElastic={0.2}
-                animate={{ scale: scale, x: 0, y: 0 }} // On peut ajouter x/y ici pour centrer au démarrage si besoin
-                transition={{ type: "spring", stiffness: 200, damping: 20 }}
+                dragConstraints={constraints} // 🔒 Bloque les bords ici
+                dragElastic={0.1}             // Résistance élastique sur les bords
+                dragMomentum={false}          // Arrêt immédiat pour éviter de glisser hors champ
+                animate={{ scale: scale }}
+                transition={{ type: "spring", stiffness: 300, damping: 30 }} // Animation fluide du zoom
                 style={{ 
                     width: MAP_WIDTH, 
                     height: MAP_HEIGHT,
                     cursor: isSailing ? 'default' : 'grab',
-                    backgroundImage: `url('${MAP_IMAGE_URL}')`,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
+                    originX: 0.5, // Zoom vers le centre
+                    originY: 0.5,
                 }}
-                className="absolute shadow-2xl origin-center"
+                // Fond d'écran (Image Map)
+                className="absolute top-0 left-0 bg-slate-950"
             >
-                {/* 📍 LES ÎLES (MARKERS) */}
+                {/* L'IMAGE DE FOND */}
+                <img 
+                    src={MAP_IMAGE_URL} 
+                    alt="World Map" 
+                    className="absolute inset-0 w-full h-full object-cover pointer-events-none opacity-80"
+                />
+
+                {/* 📍 LES POINTS (MARKERS) - Rendu DANS le contexte scalé */}
                 {islands.map((island) => {
                     const isCurrent = currentLocation?.id === island.id;
                     const isTarget = travelStatus.destinationId === island.id;
                     const isSelectable = !isSailing && !isCurrent;
 
+                    // Sécurité anti-crash si coordonnées manquantes
+                    if (island.pos_x === undefined || island.pos_y === undefined) return null;
+
                     return (
                         <div
                             key={island.id}
-                            className="absolute flex flex-col items-center group/marker z-10"
+                            className="absolute flex flex-col items-center group/marker z-10 hover:z-50"
                             style={{ 
-                                // On utilise les RATIOs pour placer les points sur la grande image
                                 left: island.pos_x * RATIO_X, 
                                 top: island.pos_y * RATIO_Y,
-                                transform: 'translate(-50%, -100%)' // L'icône pointe sur le lieu
+                                transform: `translate(-50%, -100%) scale(${1/scale})` // 🧠 Astuce: Inverse le scale pour garder les icônes de taille constante !
                             }}
                         >
-                            {/* ICÔNE DE LOCALISATION */}
                             <motion.button
                                 whileHover={{ scale: 1.2, y: -5 }}
                                 whileTap={{ scale: 0.9 }}
                                 onClick={() => isSelectable && setSelectedIsland(island)}
-                                className={`transition-all duration-300 relative p-2
-                                    ${isSelectable ? 'cursor-pointer' : 'cursor-default'}
-                                `}
+                                className={`transition-all duration-300 relative p-2 ${isSelectable ? 'cursor-pointer' : 'cursor-default'}`}
                             >
                                 <MapPin 
-                                    size={isCurrent || isTarget ? 40 : 28} 
-                                    className={`${getPinColor(island.type)} fill-black/50 stroke-[1.5px]`} 
+                                    size={48} 
+                                    className={`${getPinColor(island.type)} drop-shadow-md stroke-[1.5px]`} 
                                 />
                                 
-                                {/* Effet d'onde si c'est la destination */}
                                 {(isCurrent || isTarget) && (
-                                    <div className="absolute inset-0 bg-white/30 rounded-full animate-ping opacity-75"></div>
+                                    <div className="absolute inset-0 bg-yellow-400/30 rounded-full animate-ping opacity-75"></div>
                                 )}
                             </motion.button>
 
-                            {/* NOM DE L'ÎLE (Style RPG) */}
+                            {/* Label Île */}
                             <span className={`
-                                mt-[-5px] text-[10px] font-black px-2 py-0.5 rounded-md backdrop-blur-md border border-white/10 whitespace-nowrap transition-all duration-300
-                                ${isCurrent ? 'bg-yellow-600/90 text-white scale-110 shadow-lg border-yellow-400' : ''}
-                                ${isTarget ? 'bg-blue-600/90 text-white scale-110 shadow-lg border-blue-400 animate-pulse' : ''}
-                                ${!isCurrent && !isTarget ? 'bg-black/60 text-slate-300 opacity-0 group-hover/marker:opacity-100 group-hover/marker:translate-y-1' : ''}
+                                mt-[-10px] text-[14px] font-black px-3 py-1 rounded-md backdrop-blur-md border border-white/20 whitespace-nowrap shadow-lg transition-all duration-300
+                                ${isCurrent ? 'bg-yellow-600 text-white border-yellow-400 z-50' : 'bg-black/70 text-slate-200'}
+                                ${isTarget ? 'bg-blue-600 text-white animate-pulse' : ''}
                             `}>
                                 {island.nom}
                             </span>
@@ -181,7 +237,7 @@ const NavigationMap = () => {
                     );
                 })}
 
-                {/* 🚢 TRAJET EN COURS (SVG Overlay) */}
+                {/* 🚢 LIGNE DE TRAJET */}
                 {isSailing && (
                     <svg className="absolute inset-0 w-full h-full pointer-events-none z-0 overflow-visible">
                         {(() => {
@@ -189,17 +245,12 @@ const NavigationMap = () => {
                             const end = islands.find(i => i.id === travelStatus.destinationId);
                             if (start && end) {
                                 return (
-                                    <>
-                                        <line 
-                                            x1={start.pos_x * RATIO_X} y1={start.pos_y * RATIO_Y - 20} // -20 pour partir du haut du pin
-                                            x2={end.pos_x * RATIO_X} y2={end.pos_y * RATIO_Y - 20} 
-                                            stroke="#fbbf24" strokeWidth="4" strokeDasharray="12,8" 
-                                            className="animate-dash drop-shadow-md"
-                                        />
-                                        {/* Petit bateau sur la ligne (optionnel, pour le style) */}
-                                        <circle cx={start.pos_x * RATIO_X} cy={start.pos_y * RATIO_Y - 20} r="4" fill="white" />
-                                        <circle cx={end.pos_x * RATIO_X} cy={end.pos_y * RATIO_Y - 20} r="4" fill="white" />
-                                    </>
+                                    <line 
+                                        x1={start.pos_x * RATIO_X} y1={start.pos_y * RATIO_Y - 20}
+                                        x2={end.pos_x * RATIO_X} y2={end.pos_y * RATIO_Y - 20}
+                                        stroke="#fbbf24" strokeWidth={4 / scale} strokeDasharray="12,8" // Épaisseur s'adapte au zoom
+                                        className="animate-dash drop-shadow-md"
+                                    />
                                 );
                             }
                         })()}
@@ -207,8 +258,8 @@ const NavigationMap = () => {
                 )}
             </motion.div>
 
-            {/* 🛑 HUD BAS (PANNEAU DE NAVIGATION) */}
-            <div className="absolute bottom-0 left-0 right-0 bg-slate-950/95 border-t border-slate-700 p-3 z-40 flex justify-between items-center shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+            {/* 🛑 HUD BAS (STATUT) */}
+            <div className="absolute bottom-0 left-0 right-0 bg-slate-950/90 backdrop-blur-md border-t border-slate-700 p-3 z-40 flex justify-between items-center shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
                 {isSailing ? (
                     <div className="flex items-center gap-4 w-full px-2">
                         <div className="p-2.5 bg-blue-600 rounded-xl animate-bounce shadow-lg shadow-blue-900/50">
@@ -236,7 +287,7 @@ const NavigationMap = () => {
                                 <Anchor className="text-emerald-400" size={20} />
                             </div>
                             <div>
-                                <h3 className="text-slate-200 font-bold text-sm">Position : <span className="text-emerald-400 font-pirata text-lg tracking-wide">{currentLocation?.nom || "Inconnu"}</span></h3>
+                                <h3 className="text-slate-200 font-bold text-sm">Escale : <span className="text-emerald-400 font-pirata text-lg tracking-wide">{currentLocation?.nom || "En Mer"}</span></h3>
                                 <div className="flex gap-2 mt-0.5">
                                     {currentLocation?.facilities?.map((fac, i) => (
                                         <div key={i} title={fac} className="bg-black/40 p-1 rounded border border-white/5 text-slate-400 hover:text-white transition">
@@ -246,25 +297,20 @@ const NavigationMap = () => {
                                 </div>
                             </div>
                         </div>
-                        <div className="hidden md:block text-right text-[10px] text-slate-500 max-w-[150px] leading-tight italic">
-                            "La fortune sourit aux audacieux. Choisissez votre prochaine destination."
-                        </div>
                     </div>
                 )}
             </div>
 
-            {/* 🛑 MODALE DÉTAILS ÎLE (Popup de confirmation) */}
+            {/* 🛑 MODALE DE CONFIRMATION */}
             <AnimatePresence>
                 {selectedIsland && (
                     <motion.div 
-                        initial={{ opacity: 0, scale: 0.9, y: 50 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.9, y: 50 }}
-                        className="absolute bottom-24 left-4 right-4 md:left-auto md:right-4 md:w-80 bg-slate-900/95 border border-slate-600 rounded-2xl shadow-2xl p-0 z-50 backdrop-blur-xl overflow-hidden"
+                        initial={{ opacity: 0, y: 50 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 50 }}
+                        className="absolute bottom-24 left-4 right-4 md:left-auto md:right-4 md:w-80 bg-slate-900/95 border border-yellow-600/30 rounded-2xl shadow-2xl p-0 z-50 backdrop-blur-xl overflow-hidden"
                     >
-                        {/* Header Image ou Couleur */}
                         <div className="h-20 bg-gradient-to-br from-slate-800 to-slate-900 relative">
-                            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
                             <button onClick={() => setSelectedIsland(null)} className="absolute top-2 right-2 bg-black/20 hover:bg-black/50 text-white p-1 rounded-full transition">✕</button>
                             <div className="absolute bottom-2 left-4">
                                 <h3 className="text-xl font-bold text-white font-pirata tracking-wide drop-shadow-md">{selectedIsland.nom}</h3>
@@ -290,10 +336,8 @@ const NavigationMap = () => {
                                 </div>
                             </div>
 
-                            {/* Liste des infras */}
                             {selectedIsland.facilities.length > 0 && (
                                 <div className="mb-5">
-                                    <p className="text-[9px] text-gray-500 uppercase mb-2 font-bold tracking-wider">Services</p>
                                     <div className="flex flex-wrap gap-2">
                                         {selectedIsland.facilities.map((fac) => (
                                             <span key={fac} className="px-2.5 py-1.5 bg-slate-800 rounded-md text-[10px] text-slate-300 border border-slate-700 flex items-center gap-1.5">
