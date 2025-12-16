@@ -294,7 +294,7 @@ const NavigationMap = () => {
                             <div className="bg-black/40 p-3 rounded-xl border border-white/5 flex flex-col items-center">
                                 <span className="text-[10px] uppercase text-slate-500 font-bold tracking-widest mb-1">Services</span>
                                 <div className="flex gap-2 mt-1">
-                                    {selectedIsland.facilities.length > 0 ? selectedIsland.facilities.map((fac, i) => (
+                                    {selectedIsland.facilities?.length > 0 ? selectedIsland.facilities?.map((fac, i) => (
                                         <div key={i} title={fac} className="bg-white/10 p-1.5 rounded-lg border border-white/10 text-white">
                                             {getFacilityIcon(fac)}
                                         </div>

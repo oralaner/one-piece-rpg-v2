@@ -4220,7 +4220,7 @@ async recolterExpedition(dto: { userId: string }) {
   // =================================================================
 
   // 1. RÉCUPÉRER LA CARTE (Par Océan)
-  async getMapData(userId: string) {
+async getMapData(userId: string) {
     const joueur = await this.prisma.joueurs.findUnique({ 
         where: { id: userId },
         include: { localisation: true } 
@@ -4228,32 +4228,33 @@ async recolterExpedition(dto: { userId: string }) {
     
     if (!joueur) throw new BadRequestException("Joueur introuvable");
 
-    // On détermine l'océan actuel (soit via l'île, soit par défaut East Blue)
     const currentOcean = joueur.localisation?.ocean || 'EAST_BLUE';
 
-    // On récupère toutes les îles de cet océan
     const islands = await this.prisma.destinations.findMany({
-        where: { ocean: currentOcean },
-        select: {
-            id: true,
-            nom: true,
-            pos_x: true,
-            pos_y: true,
-            type: true,
-            niveau_requis: true,
-            ocean: true
-        }
-    });
+      where: { ocean: currentOcean },
+      select: {
+          id: true,
+          nom: true,
+          pos_x: true,
+          pos_y: true,
+          type: true,
+          niveau_requis: true,
+          ocean: true,
+          // 👇 AJOUTE CES DEUX LIGNES :
+          description: true,
+          facilities: true 
+      }
+  });
 
     return {
-        currentLocation: joueur.localisation, // Où je suis
+        currentLocation: joueur.localisation,
         travelStatus: {
-            state: joueur.statut_voyage, // "A_QUAI" ou "EN_MER"
+            state: joueur.statut_voyage,
             destinationId: joueur.trajet_arrivee_id,
             arrivalTime: joueur.trajet_fin,
             departId: joueur.trajet_depart_id
         },
-        map: islands // Les points sur la carte
+        map: islands
     };
   }
 
