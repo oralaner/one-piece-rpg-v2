@@ -22,7 +22,7 @@ import HomeTab from "./features/HomeTab";
 import ShopTab from "./features/ShopTab";
 import CombatTab from "./features/CombatTab";
 import CasinoTab from "./features/CasinoTab";
-import MapTab from "./features/MapTab";
+import NavigationMap from './components/NavigationMap';
 import TeamTab from "./features/TeamTab";
 import ChatTab from "./features/ChatTab";
 import ShipyardTab from "./features/ShipyardTab";
@@ -34,7 +34,7 @@ import DeckTab from "./features/DeckTab";
 import StatsTab from "./features/StatsTab";
 import ArenaTab from "./features/ArenaTab";
 import StoryTab from './features/StoryTab';
-import AdminTab from "./features/AdminTab"; // 👈 NOUVEAU
+import AdminTab from "./features/AdminTab";
 
 
 
@@ -526,18 +526,7 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                                 theme={currentTheme} 
                             />
                         )}                        
-                        {activeTab === 'expeditions' && (
-                            <MapTab 
-                                destinations={game.destinations} 
-                                joueur={joueur} 
-                                expeditionChrono={game.expeditionChrono} 
-                                onTravel={game.voyager} 
-                                onCollect={game.recolterExpedition} 
-                                theme={currentTheme}
-                                meteoData={game.meteoData}
-                                equipement={equipement}
-                            />
-                        )}                        
+                        {activeTab === 'map' && <NavigationMap />}                     
                         {activeTab === 'equipage' && (
                             <TeamTab 
                                 myTeam={game.monEquipage}

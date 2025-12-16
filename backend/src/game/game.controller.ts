@@ -134,21 +134,6 @@ export class GameController {
     return this.gameService.playCasino(dto);
   }
 
-  // --- VOYAGE ---
-
-  @Post('travel/start')
-  @UseGuards(AuthGuard('jwt'))
-  voyager(@User() userId: string, @Body() dto: TravelDto) {
-    dto.userId = userId;
-    return this.gameService.startExpedition(dto);
-  }
-
-  @Post('travel/collect')
-  @UseGuards(AuthGuard('jwt'))
-  recolter(@User() userId: string) {
-    return this.gameService.collectExpedition(userId);
-  }
-
   // --- COMPÉTENCES ---
 
   @Post('skill/buy') 
@@ -274,11 +259,6 @@ export class GameController {
   @Get('commerce')
   getCommerce() {
     return this.gameService.getCommerceData();
-  }
-
-  @Get('travel/data')
-  getTravelData() {
-    return this.gameService.getTravelData();
   }
 
   @Get('skills/:userId')
@@ -442,5 +422,25 @@ export class GameController {
   @UseGuards(AuthGuard('jwt'))
   async readNotification(@User() userId: string, @Param('id') id: string) {
       return this.gameService.readNotification(userId, id);
+  }
+
+  // --- VOYAGE V2 (Temps Réel) ---
+
+  @Get('map')
+  @UseGuards(AuthGuard('jwt'))
+  getMap(@User() userId: string) {
+    return this.gameService.getMapData(userId);
+  }
+
+  @Post('map/travel')
+  @UseGuards(AuthGuard('jwt'))
+  startTravel(@User() userId: string, @Body() body: { destinationId: number }) {
+    return this.gameService.startTravel(userId, Number(body.destinationId));
+  }
+
+  @Get('map/status')
+  @UseGuards(AuthGuard('jwt'))
+  checkTravel(@User() userId: string) {
+    return this.gameService.checkTravelArrival(userId);
   }
 }

@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, IslandType, Ocean, Facility } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -1250,215 +1250,460 @@ console.log('🧹 Nettoyage des dépendances...');
   // --------------------------------------------------------
   console.log('🗺️ Création de la Carte du Monde avec Loots Dynamiques...');
 
-  await prisma.destinations.deleteMany({});
-
-  // 1. On récupère TOUS les objets pour pouvoir piocher dedans
+async function generateLootsForLevel(level: number, bonusLoots: any[] = []) {
   const allItems = await prisma.objets.findMany();
   
-  // On les trie par rareté pour faciliter le tirage
   const itemsByRarity = {
     Commun: allItems.filter(i => i.rarete === 'Commun'),
     Rare: allItems.filter(i => i.rarete === 'Rare'),
-    Epique: allItems.filter(i => i.rarete === 'Épique'), // Attention à l'accent dans ta DB
+    Epique: allItems.filter(i => i.rarete === 'Épique'),
     Legendaire: allItems.filter(i => i.rarete === 'Légendaire'),
     Mythique: allItems.filter(i => i.rarete === 'Mythique'),
   };
 
-  // Fonction pour piocher un item aléatoire d'une rareté donnée
   const getRandomItemName = (rarete: string) => {
     const list = itemsByRarity[rarete as keyof typeof itemsByRarity];
     if (!list || list.length === 0) return null;
-    const randomIndex = Math.floor(Math.random() * list.length);
-    return list[randomIndex].nom;
+    return list[Math.floor(Math.random() * list.length)].nom;
   };
 
-  // Fonction générique pour créer une ligne de loot
   const lootLine = (rarete: string, min: number, max: number, proba: number) => {
     const nom = getRandomItemName(rarete);
-    if (!nom) return null;
-    return { nom, min, max, proba };
+    return nom ? { nom, min, max, proba } : null;
   };
 
- // 2. Générateur de loot basé sur le niveau
-  const generateTierLoot = (level: number) => {
-    // On crée un tableau qui peut contenir des null temporairement
-    const rawLoots: ( { nom: string, min: number, max: number, proba: number } | null )[] = [];
+  const rawLoots: any[] = [];
 
-    // --- NIVEAU 1 à 10 ---
-    if (level >= 1 && level <= 10) {
-      rawLoots.push(lootLine("Commun", 1, 3, 0.5));
-      rawLoots.push(lootLine("Commun", 1, 3, 0.25));
+  // Paliers de loot génériques
+  if (level <= 10) {
+      rawLoots.push(lootLine("Commun", 1, 3, 0.6));
       rawLoots.push(lootLine("Rare", 1, 1, 0.05));
-    }
-    // --- NIVEAU 11 à 25 ---
-    else if (level <= 25) {
-      rawLoots.push(lootLine("Commun", 3, 5, 1.0));
-      rawLoots.push(lootLine("Commun", 3, 5, 0.75));
-      rawLoots.push(lootLine("Rare", 1, 3, 0.25));
-      rawLoots.push(lootLine("Epique", 1, 1, 0.05));
-    }
-    // --- NIVEAU 26 à 50 ---
-    else if (level <= 50) {
-      rawLoots.push(lootLine("Commun", 6, 10, 1.0));
-      rawLoots.push(lootLine("Commun", 6, 10, 1.0));
-      rawLoots.push(lootLine("Commun", 6, 10, 1.0));
-      rawLoots.push(lootLine("Rare", 3, 5, 1.0));
-      rawLoots.push(lootLine("Rare", 3, 5, 0.75));
-      rawLoots.push(lootLine("Epique", 1, 3, 0.25));
+  } else if (level <= 30) {
+      rawLoots.push(lootLine("Commun", 2, 5, 0.8));
+      rawLoots.push(lootLine("Rare", 1, 2, 0.2));
+  } else if (level <= 60) {
+      rawLoots.push(lootLine("Commun", 5, 10, 1.0));
+      rawLoots.push(lootLine("Rare", 2, 4, 0.5));
+      rawLoots.push(lootLine("Epique", 1, 1, 0.1));
+  } else if (level <= 100) {
+      rawLoots.push(lootLine("Rare", 5, 8, 1.0));
+      rawLoots.push(lootLine("Epique", 1, 3, 0.4));
       rawLoots.push(lootLine("Legendaire", 1, 1, 0.05));
-    }
-    // --- NIVEAU 51 à 100 ---
-    else if (level <= 100) {
-      rawLoots.push(lootLine("Rare", 6, 10, 1.0));
-      rawLoots.push(lootLine("Rare", 6, 10, 1.0));
-      rawLoots.push(lootLine("Rare", 6, 10, 1.0));
-      rawLoots.push(lootLine("Epique", 3, 5, 1.0));
-      rawLoots.push(lootLine("Epique", 3, 5, 0.75));
-      rawLoots.push(lootLine("Legendaire", 1, 3, 0.25));
+  } else {
+      rawLoots.push(lootLine("Epique", 3, 6, 1.0));
+      rawLoots.push(lootLine("Legendaire", 1, 2, 0.3));
       rawLoots.push(lootLine("Mythique", 1, 1, 0.05));
-    }
-    // --- NIVEAU 101+ ---
-    else {
-      rawLoots.push(lootLine("Epique", 6, 10, 1.0));
-      rawLoots.push(lootLine("Epique", 6, 10, 1.0));
-      rawLoots.push(lootLine("Epique", 6, 10, 1.0));
-      rawLoots.push(lootLine("Legendaire", 3, 5, 1.0));
-      rawLoots.push(lootLine("Legendaire", 3, 5, 0.5));
-      rawLoots.push(lootLine("Mythique", 1, 1, 0.25));
-    }
+  }
 
-    // 🔥 FILTRAGE STRICT : On ne garde que les éléments qui ne sont PAS null
-    // L'opérateur "is" dit à TypeScript : "Je te jure que ce qui sort n'est pas null"
-    return rawLoots.filter((l): l is { nom: string, min: number, max: number, proba: number } => l !== null);
-  };
+  // Fusion avec les loots manuels
+  const finalLoots = [
+    ...rawLoots.filter(l => l !== null),
+    ...bonusLoots
+  ];
 
-// Helper pour définir manuellement un loot thématique
-  const manualLoot = (nomItem: string, min: number, max: number, proba: number) => ({ nom: nomItem, min, max, proba });
+  return finalLoots;
+}
 
-  // 🔥🔥🔥 CONFIGURATION ÉQUILIBRÉE (XP RÉDUITE) 🔥🔥🔥
-  const destinationsData = [
-    // --- EAST BLUE (Niv 1-15) : 2 à 15 min ---
+const manualLoot = (nom: string, min: number, max: number, proba: number) => ({ nom, min, max, proba });
+
+// =========================================================
+// 🗺️ 2. DONNÉES DES ÎLES (COMPLETE)
+// =========================================================
+  console.log('🌱 Début du seeding de la Carte Complète...');
+
+  const islandsData = [
+    // ---------------------------------------------------------
+    // 🌊 EAST BLUE (Niveaux 1 - 20) | Zone X: 0-90
+    // ---------------------------------------------------------
     {
-      nom: "Village de Fuchsia", region: "East Blue", 
-      niv: 3, duree: 2, diff: 10, 
-      xp: 40, berrys: 2500, // XP réduite (était 250)
-      desc: "Le point de départ.", posX: 89, posY: 17,
-      bonusLoots: [manualLoot("Bois", 2, 5, 1.0)] 
+      nom: "Village de Fushia",
+      description: "Le point de départ paisible.",
+      image_url: "https://images.wikia.nocookie.net/onepiece/fr/images/6/69/Village_de_Fushia.png",
+      pos_x: 10, pos_y: 50,
+      ocean: Ocean.EAST_BLUE,
+      type: IslandType.VILLE,
+      niveau_requis: 1,
+      facilities: [Facility.PORT, Facility.TAVERNE],
+      bonusLoots: [manualLoot("Bois", 2, 5, 1.0)]
     },
     {
-      nom: "Shells Town", region: "East Blue", 
-      niv: 5, duree: 5, diff: 15, 
-      xp: 70, berrys: 4000, // XP réduite (était 400)
-      desc: "Une ville sous le joug de la Marine.", posX: 85, posY: 14,
+      nom: "Shells Town",
+      description: "Une ville sous le contrôle strict de la Marine.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/1/1d/Shells_Town_Infobox.png",
+      pos_x: 25, pos_y: 40,
+      ocean: Ocean.EAST_BLUE,
+      type: IslandType.QG_MARINE,
+      niveau_requis: 5,
+      facilities: [Facility.PORT, Facility.ARENE],
       bonusLoots: [manualLoot("Ferraille", 2, 4, 0.8)]
     },
     {
-      nom: "Village d'Orange", region: "East Blue", 
-      niv: 8, duree: 8, diff: 20, 
-      xp: 100, berrys: 6000, 
-      desc: "Ville portuaire.", posX: 78, posY: 21,
+      nom: "Village d'Orange",
+      description: "Un village qui a été ravagé par des pirates clowns.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/5/53/Orange_Town_Infobox.png",
+      pos_x: 35, pos_y: 60,
+      ocean: Ocean.EAST_BLUE,
+      type: IslandType.VILLE,
+      niveau_requis: 8,
+      facilities: [Facility.PORT, Facility.SHOP],
       bonusLoots: [manualLoot("Tissu", 1, 3, 0.6)]
     },
     {
-      nom: "Village de Sirop", region: "East Blue", 
-      niv: 10, duree: 10, diff: 25, 
-      xp: 150, berrys: 8000, 
-      desc: "Connu pour ses herbes.", posX: 71, posY: 24,
+      nom: "Village de Sirop",
+      description: "Un village connu pour son chantier naval modeste.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/3/36/Syrup_Village_Infobox.png",
+      pos_x: 45, pos_y: 30,
+      ocean: Ocean.EAST_BLUE,
+      type: IslandType.VILLE,
+      niveau_requis: 10,
+      facilities: [Facility.PORT, Facility.SHOP, Facility.TAVERNE],
       bonusLoots: [manualLoot("Herbe médicinale", 2, 4, 1.0)]
     },
     {
-      nom: "Goat Island", region: "East Blue", 
-      niv: 4, duree: 3, diff: 12, 
-      xp: 60, berrys: 3000, 
-      desc: "Une petite île rocheuse, repaire de pirates.", posX: 87, posY: 16, 
-      bonusLoots: [manualLoot("Bois", 1, 3, 0.8)] 
+      nom: "Baratie",
+      description: "Le célèbre navire-restaurant.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/e/ee/Baratie_Infobox.png",
+      pos_x: 60, pos_y: 45,
+      ocean: Ocean.EAST_BLUE,
+      type: IslandType.VILLE,
+      niveau_requis: 12,
+      facilities: [Facility.PORT, Facility.TAVERNE],
+      bonusLoots: [manualLoot("Omelette nourrissante", 1, 1, 0.5)]
     },
     {
-      nom: "Village de Shimotsuki", region: "East Blue", 
-      niv: 4, duree: 4, diff: 12, 
-      xp: 65, berrys: 3500, 
-      desc: "Un village paisible célèbre pour son Dojo.", posX: 92, posY: 30,
-      bonusLoots: [manualLoot("Herbe médicinale", 1, 2, 0.7)]
+      nom: "Arlong Park",
+      description: "Le quartier général des Hommes-Poissons.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/2/23/Arlong_Park_Infobox.png",
+      pos_x: 70, pos_y: 65,
+      ocean: Ocean.EAST_BLUE,
+      type: IslandType.DONJON,
+      niveau_requis: 15,
+      facilities: [Facility.PORT],
+      bonusLoots: [manualLoot("Or", 1, 2, 0.2)]
     },
     {
-      nom: "Le Baratie", region: "East Blue", 
-      niv: 12, duree: 12, diff: 30, 
-      xp: 200, berrys: 12000, 
-      desc: "Le restaurant flottant.", posX: 75, posY: 36,
-      bonusLoots: [manualLoot("Omelette nourrissante", 1, 1, 0.3), manualLoot("Lait", 2, 5, 1.0)]
+      nom: "Loguetown",
+      description: "La ville du début et de la fin.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/9/91/Loguetown_Infobox.png",
+      pos_x: 90, pos_y: 50,
+      ocean: Ocean.EAST_BLUE,
+      type: IslandType.VILLE,
+      niveau_requis: 18,
+      facilities: [Facility.PORT, Facility.SHOP, Facility.FORGE, Facility.CASINO, Facility.ARENE, Facility.MARCHE],
+      bonusLoots: []
+    },
+
+    // ---------------------------------------------------------
+    // 🌋 GRAND LINE - PARADIS (Niveaux 20 - 90) | Zone X: 100-190
+    // ---------------------------------------------------------
+    {
+      nom: "Cap des Jumeaux",
+      description: "L'entrée de Grand Line. Une baleine géante y attend.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/6/66/Twin_Cape_Infobox.png",
+      pos_x: 100, pos_y: 50,
+      ocean: Ocean.GRAND_LINE,
+      type: IslandType.SAUVAGE,
+      niveau_requis: 20,
+      facilities: [Facility.PORT],
+      bonusLoots: [manualLoot("Eau de mer", 5, 10, 1.0)]
     },
     {
-      nom: "Arlong Park", region: "East Blue", 
-      niv: 15, duree: 15, diff: 40, 
-      xp: 300, berrys: 15000, 
-      desc: "QG d'Arlong.", posX: 62, posY: 21,
-      bonusLoots: [manualLoot("Eau de mer", 5, 10, 1.0), manualLoot("Or", 1, 2, 0.2)]
+      nom: "Whiskey Peak",
+      description: "Une île accueillante... pour les chasseurs de primes.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/2/22/Whisky_Peak_Infobox.png",
+      pos_x: 110, pos_y: 30,
+      ocean: Ocean.GRAND_LINE,
+      type: IslandType.VILLE,
+      niveau_requis: 25,
+      facilities: [Facility.PORT, Facility.TAVERNE, Facility.ARENE],
+      bonusLoots: [manualLoot("Poudre à canon", 2, 5, 0.5)]
+    },
+    {
+      nom: "Little Garden",
+      description: "Une île préhistorique figée dans le temps.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/9/98/Little_Garden_Infobox.png",
+      pos_x: 120, pos_y: 60,
+      ocean: Ocean.GRAND_LINE,
+      type: IslandType.SAUVAGE,
+      niveau_requis: 30,
+      facilities: [],
+      bonusLoots: [manualLoot("Viande de Dinosaure", 1, 2, 0.4)]
+    },
+    {
+      nom: "Royaume de Drum",
+      description: "Une île hivernale réputée pour sa médecine.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/6/69/Drum_Island_Infobox.png",
+      pos_x: 130, pos_y: 20,
+      ocean: Ocean.GRAND_LINE,
+      type: IslandType.VILLE,
+      niveau_requis: 35,
+      facilities: [Facility.PORT, Facility.SHOP],
+      bonusLoots: [manualLoot("Herbe médicinale", 5, 10, 1.0)]
+    },
+    {
+      nom: "Alabasta",
+      description: "Un vaste royaume désertique au bord de la guerre civile.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/4/42/Alabasta_Infobox.png",
+      pos_x: 140, pos_y: 50,
+      ocean: Ocean.GRAND_LINE,
+      type: IslandType.VILLE,
+      niveau_requis: 40,
+      facilities: [Facility.PORT, Facility.SHOP, Facility.CASINO, Facility.MARCHE],
+      bonusLoots: [manualLoot("Poudre d'or", 1, 3, 0.3)]
+    },
+    {
+      nom: "Jaya",
+      description: "Une île de non-droit remplie de pirates.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/3/30/Jaya_Infobox.png",
+      pos_x: 150, pos_y: 40,
+      ocean: Ocean.GRAND_LINE,
+      type: IslandType.VILLE,
+      niveau_requis: 45,
+      facilities: [Facility.PORT, Facility.TAVERNE, Facility.ARENE],
+      bonusLoots: [manualLoot("Rhum", 2, 5, 0.8)]
+    },
+    {
+      nom: "Skypiea",
+      description: "L'île céleste dans la Mer Blanche.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/2/29/Skypiea_Infobox.png",
+      pos_x: 150, pos_y: 10, // En haut !
+      ocean: Ocean.GRAND_LINE,
+      type: IslandType.EVENT,
+      niveau_requis: 50,
+      facilities: [Facility.SHOP],
+      bonusLoots: [manualLoot("Dial", 1, 2, 0.5)]
+    },
+    {
+      nom: "Water Seven",
+      description: "La métropole de l'eau et des charpentiers.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/0/07/Water_7_Infobox.png",
+      pos_x: 160, pos_y: 60,
+      ocean: Ocean.GRAND_LINE,
+      type: IslandType.VILLE,
+      niveau_requis: 55,
+      facilities: [Facility.PORT, Facility.FORGE, Facility.SHOP, Facility.MARCHE], // Forge importante
+      bonusLoots: [manualLoot("Bois de teck", 3, 6, 0.8)]
+    },
+    {
+      nom: "Enies Lobby",
+      description: "L'île judiciaire du Gouvernement Mondial.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/7/73/Enies_Lobby_Infobox.png",
+      pos_x: 165, pos_y: 70,
+      ocean: Ocean.GRAND_LINE,
+      type: IslandType.QG_MARINE,
+      niveau_requis: 60,
+      facilities: [Facility.PORT, Facility.ARENE],
+      bonusLoots: [manualLoot("Acier", 2, 4, 0.5)]
+    },
+    {
+      nom: "Thriller Bark",
+      description: "Un navire géant hanté par des ombres.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/8/8f/Thriller_Bark_Infobox.png",
+      pos_x: 175, pos_y: 30,
+      ocean: Ocean.GRAND_LINE,
+      type: IslandType.DONJON,
+      niveau_requis: 70,
+      facilities: [Facility.PORT],
+      bonusLoots: [manualLoot("Sel", 5, 10, 0.9)]
+    },
+    {
+      nom: "Archipel Sabaody",
+      description: "Dernière étape avant le Nouveau Monde.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/6/6f/Sabaody_Archipelago_Infobox.png",
+      pos_x: 190, pos_y: 50,
+      ocean: Ocean.GRAND_LINE,
+      type: IslandType.VILLE,
+      niveau_requis: 80,
+      facilities: [Facility.PORT, Facility.SHOP, Facility.CASINO, Facility.ARENE, Facility.MARCHE, Facility.FORGE],
+      bonusLoots: [manualLoot("Colle", 2, 5, 0.7)]
     },
 
-    // --- THE BLUES (Niv 18-40) : 20 à 45 min ---
-    { nom: "Baterilla", region: "South Blue", niv: 20, duree: 20, diff: 50, xp: 450, berrys: 25000, desc: "Île tropicale.", posX: 64, posY: 91, bonusLoots: [manualLoot("Fruits", 5, 10, 0.8)] },
-    { nom: "Royaume de Briss", region: "South Blue", niv: 18, duree: 20, diff: 45, xp: 400, berrys: 20000, desc: "Exploration.", posX: 60, posY: 70, bonusLoots: [] },
-    { nom: "Royaume de Centaurea", region: "South Blue", niv: 22, duree: 22, diff: 55, xp: 500, berrys: 28000, desc: "Guerre civile.", posX: 77, posY: 93, bonusLoots: [manualLoot("Poudre à canon", 2, 5, 0.6)] },
-    
-    { nom: "Royaume d'Ilisia", region: "West Blue", niv: 30, duree: 30, diff: 70, xp: 750, berrys: 40000, desc: "Champs de fleurs.", posX: 15, posY: 70, bonusLoots: [manualLoot("Coquelicot écarlate", 1, 1, 0.2)] },
-    { nom: "Ohara (Ruines)", region: "West Blue", niv: 40, duree: 45, diff: 100, xp: 1200, berrys: 60000, desc: "Savoir perdu.", posX: 29, posY: 80, bonusLoots: [manualLoot("Parchemin vierge", 2, 5, 1.0)] },
-    { nom: "Pays des Kano", region: "West Blue", niv: 35, duree: 35, diff: 80, xp: 900, berrys: 50000, desc: "Happou Navy.", posX: 35, posY: 93, bonusLoots: [manualLoot("Bois de teck", 2, 5, 0.6)] },
-    
-    { nom: "Royaume de Lvneel", region: "North Blue", niv: 25, duree: 25, diff: 60, xp: 600, berrys: 35000, desc: "Contes de fées.", posX: 32, posY: 20, bonusLoots: [manualLoot("Lingot de fer", 1, 2, 0.4)] },
-    { nom: "Royaume de Flevance", region: "North Blue", niv: 28, duree: 25, diff: 65, xp: 700, berrys: 38000, desc: "Ville blanche.", posX: 15, posY: 23, bonusLoots: [manualLoot("Manganèse scintillante", 1, 1, 0.2)] },
-    { nom: "Spider Miles", region: "North Blue", niv: 22, duree: 25, diff: 55, xp: 550, berrys: 30000, desc: "Industrie.", posX: 18, posY: 18, bonusLoots: [manualLoot("Ferraille", 10, 20, 1.0)] },
+    // ---------------------------------------------------------
+    // 🐍 CALM BELT (Niveaux 85 - 100)
+    // ---------------------------------------------------------
+    {
+      nom: "Amazon Lily",
+      description: "L'île des femmes guerrières.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/f/fe/Amazon_Lily_Infobox.png",
+      pos_x: 180, pos_y: 80,
+      ocean: Ocean.GRAND_LINE, // Techniquement Calm Belt, mais groupé
+      type: IslandType.VILLE,
+      niveau_requis: 85,
+      facilities: [Facility.PORT, Facility.ARENE],
+      bonusLoots: []
+    },
+    {
+      nom: "Impel Down",
+      description: "La grande prison sous-marine.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/9/90/Impel_Down_Infobox.png",
+      pos_x: 170, pos_y: 80,
+      ocean: Ocean.GRAND_LINE,
+      type: IslandType.DONJON,
+      niveau_requis: 90,
+      facilities: [Facility.PORT],
+      bonusLoots: [manualLoot("Menottes", 1, 1, 0.2)]
+    },
+    {
+      nom: "Marineford",
+      description: "L'ancien QG de la Marine.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/9/91/Marineford_Infobox.png",
+      pos_x: 180, pos_y: 65,
+      ocean: Ocean.GRAND_LINE,
+      type: IslandType.QG_MARINE,
+      niveau_requis: 100,
+      facilities: [Facility.ARENE],
+      bonusLoots: []
+    },
 
-    // --- GRAND LINE (Niv 45-90) : 1h à 2h ---
-    { nom: "Little Garden", region: "Grand Line", niv: 45, duree: 60, diff: 120, xp: 1500, berrys: 100000, desc: "Préhistoire.", posX: 56, posY: 47, bonusLoots: [manualLoot("Mandragore adulte", 1, 1, 0.2)] },
-    { nom: "Alabasta", region: "Grand Line", niv: 50, duree: 75, diff: 150, xp: 2000, berrys: 150000, desc: "Désert.", posX: 63, posY: 48, bonusLoots: [manualLoot("Poudre d'or", 2, 5, 0.6)] },
-    { nom: "Skypiea", region: "Grand Line", niv: 60, duree: 90, diff: 180, xp: 3000, berrys: 200000, desc: "Céleste.", posX: 69, posY: 50, type_lieu: "CELESTE", bonusLoots: [manualLoot("Plume de Phoenix", 1, 1, 0.1)] },
-    { nom: "Water Seven", region: "Grand Line", niv: 70, duree: 100, diff: 200, xp: 4500, berrys: 300000, desc: "Charpentiers.", posX: 81, posY: 49, bonusLoots: [manualLoot("Bois de teck", 5, 10, 0.8), manualLoot("Outils", 2, 4, 0.8)] },
-    { nom: "Enies Lobby", region: "Grand Line", niv: 75, duree: 110, diff: 220, xp: 5500, berrys: 400000, desc: "Judiciaire.", posX: 87, posY: 55, bonusLoots: [manualLoot("Lingot de fer", 2, 5, 0.7)] },
-    { nom: "Thriller Bark", region: "Grand Line", niv: 80, duree: 120, diff: 250, xp: 6500, berrys: 500000, desc: "Fantômes.", posX: 89, posY: 50, bonusLoots: [manualLoot("Essence de la lune", 1, 3, 0.5)] },
-    { nom: "Archipel des Sabaody", region: "Grand Line", niv: 90, duree: 140, diff: 300, xp: 8500, berrys: 750000, desc: "Mangroves.", posX: 96, posY: 50, bonusLoots: [manualLoot("Colle", 5, 10, 0.9)] },
-
-    // --- CALM BELT (Niv 100-110) ---
-    { nom: "Amazon Lily", region: "Calm Belt", niv: 100, duree: 160, diff: 350, xp: 10000, berrys: 1000000, desc: "Femmes guerrières.", posX: 85, posY: 59, bonusLoots: [manualLoot("Essence du haki", 1, 2, 0.4)] },
-    { nom: "Impel Down", region: "Calm Belt", niv: 110, duree: 180, diff: 400, xp: 12000, berrys: 1250000, desc: "Prison.", posX: 89, posY: 58, bonusLoots: [manualLoot("Granit marin", 1, 2, 0.3)] },
-
-    // --- NOUVEAU MONDE (Niv 120+) : 4h à 12h ---
-    { nom: "Île des Hommes-Poissons", region: "Nouveau Monde", niv: 120, duree: 240, diff: 500, xp: 15000, berrys: 2500000, desc: "Sous-marin.", posX: 2, posY: 53, type_lieu: "SOUS_MARIN", bonusLoots: [manualLoot("Larme de sirène", 1, 1, 0.2)] },
-    { nom: "Punk Hazard", region: "Nouveau Monde", niv: 130, duree: 260, diff: 600, xp: 18000, berrys: 3000000, desc: "Glace et Feu.", posX: 5, posY: 56, bonusLoots: [manualLoot("Essence du feu", 5, 10, 0.6), manualLoot("Essence de l'eau", 5, 10, 0.6)] },
-    { nom: "Dressrosa", region: "Nouveau Monde", niv: 140, duree: 300, diff: 700, xp: 22000, berrys: 4000000, desc: "Passion.", posX: 9, posY: 56, bonusLoots: [manualLoot("Pierre", 50, 100, 1.0)] },
-    { nom: "Zou", region: "Nouveau Monde", niv: 150, duree: 320, diff: 800, xp: 25000, berrys: 5000000, desc: "Éléphant.", posX: 26, posY: 57, bonusLoots: [manualLoot("Essence du vent", 5, 10, 0.6)] },
-    { nom: "Whole Cake Island", region: "Nouveau Monde", niv: 160, duree: 360, diff: 900, xp: 30000, berrys: 6500000, desc: "Gourmandise.", posX: 20, posY: 48, bonusLoots: [manualLoot("Sucre", 20, 50, 1.0)] },
-    { nom: "Wano Kuni", region: "Nouveau Monde", niv: 180, duree: 420, diff: 1000, xp: 40000, berrys: 8000000, desc: "Samouraïs.", posX: 33, posY: 50, bonusLoots: [manualLoot("Granit marin", 2, 5, 0.6), manualLoot("Obsidienne sombre", 1, 2, 0.4)] },
-    { nom: "Elbaf", region: "Nouveau Monde", niv: 200, duree: 480, diff: 1200, xp: 50000, berrys: 10000000, desc: "Géants.", posX: 38, posY: 51, bonusLoots: [manualLoot("Bois d'adam", 5, 10, 0.6)] },
-    { nom: "Lodestar", region: "Nouveau Monde", niv: 250, duree: 720, diff: 2000, xp: 80000, berrys: 50000000, desc: "Dernière île.", posX: 44, posY: 52, bonusLoots: [manualLoot("Coffre mythique", 1, 1, 0.3)] }
+    // ---------------------------------------------------------
+    // 👑 NOUVEAU MONDE (Niveaux 100 - 200+) | Zone X: 200-300
+    // ---------------------------------------------------------
+    {
+      nom: "Île des Hommes-Poissons",
+      description: "Le paradis sous-marin à 10 000 mètres de profondeur.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/8/87/Fish-Man_Island_Infobox.png",
+      pos_x: 200, pos_y: 50,
+      ocean: Ocean.NEW_WORLD,
+      type: IslandType.VILLE,
+      niveau_requis: 105,
+      facilities: [Facility.PORT, Facility.SHOP, Facility.TAVERNE],
+      bonusLoots: [manualLoot("Corail", 2, 5, 0.8)]
+    },
+    {
+      nom: "Punk Hazard",
+      description: "Une île divisée entre glace et feu.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/0/07/Punk_Hazard_Infobox.png",
+      pos_x: 215, pos_y: 40,
+      ocean: Ocean.NEW_WORLD,
+      type: IslandType.SAUVAGE,
+      niveau_requis: 115,
+      facilities: [Facility.PORT],
+      bonusLoots: [manualLoot("Fruit du Démon Artificiel", 1, 1, 0.05)]
+    },
+    {
+      nom: "Dressrosa",
+      description: "Le pays de l'amour, de la passion et des jouets.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/2/23/Dressrosa_Infobox.png",
+      pos_x: 230, pos_y: 60,
+      ocean: Ocean.NEW_WORLD,
+      type: IslandType.VILLE,
+      niveau_requis: 125,
+      facilities: [Facility.PORT, Facility.ARENE, Facility.CASINO, Facility.SHOP],
+      bonusLoots: [manualLoot("Acier Trempé", 1, 3, 0.5)]
+    },
+    {
+      nom: "Zou",
+      description: "Une île vivante sur le dos d'un éléphant millénaire.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/7/70/Zou_Infobox.png",
+      pos_x: 245, pos_y: 30, // Elle bouge normalement, mais on fixe une pos
+      ocean: Ocean.NEW_WORLD,
+      type: IslandType.SAUVAGE,
+      niveau_requis: 135,
+      facilities: [Facility.PORT],
+      bonusLoots: [manualLoot("Fruit Électrique", 2, 5, 0.6)]
+    },
+    {
+      nom: "Whole Cake Island",
+      description: "L'archipel de la gourmandise.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/3/3d/Whole_Cake_Island_Infobox.png",
+      pos_x: 260, pos_y: 50,
+      ocean: Ocean.NEW_WORLD,
+      type: IslandType.VILLE,
+      niveau_requis: 150,
+      facilities: [Facility.PORT, Facility.SHOP, Facility.FORGE],
+      bonusLoots: [manualLoot("Gâteau Délicieux", 1, 1, 0.5)]
+    },
+    {
+      nom: "Wano Kuni",
+      description: "Le pays des Samouraïs, isolé du monde.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/d/d3/Wano_Country_Infobox.png",
+      pos_x: 275, pos_y: 70,
+      ocean: Ocean.NEW_WORLD,
+      type: IslandType.VILLE,
+      niveau_requis: 170,
+      facilities: [Facility.PORT, Facility.FORGE, Facility.ARENE, Facility.SHOP],
+      bonusLoots: [manualLoot("Granit Marin", 1, 2, 0.4), manualLoot("Sabre de qualité", 1, 1, 0.1)]
+    },
+    {
+      nom: "Elbaf",
+      description: "La terre des fiers guerriers géants.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/6/64/Elbaf_Infobox.png",
+      pos_x: 285, pos_y: 40,
+      ocean: Ocean.NEW_WORLD,
+      type: IslandType.SAUVAGE,
+      niveau_requis: 190,
+      facilities: [Facility.PORT, Facility.ARENE],
+      bonusLoots: [manualLoot("Bois d'Adam", 1, 1, 0.1)]
+    },
+    {
+      nom: "Laugh Tale",
+      description: "L'île finale. Le trésor s'y trouve.",
+      image_url: "https://static.wikia.nocookie.net/onepiece/images/2/29/Laugh_Tale_Infobox.png",
+      pos_x: 300, pos_y: 50,
+      ocean: Ocean.NEW_WORLD,
+      type: IslandType.EVENT,
+      niveau_requis: 250,
+      facilities: [],
+      bonusLoots: [manualLoot("One Piece", 1, 1, 0.001)] // Le rêve !
+    }
   ];
 
-  // 4. Génération finale et Insertion
-  for (const d of destinationsData) {
-    // A. Génération des loots systémiques (selon le niveau)
-    const tierLoots = generateTierLoot(d.niv);
-    
-    // B. Ajout des loots thématiques
-    const finalLoots = [...tierLoots, ...(d.bonusLoots || [])];
+  // =========================================================
+  // 💾 3. INSERTION EN BASE
+  // =========================================================
+  for (const d of islandsData) {
+    // A. Génération des loots
+    const loots = await generateLootsForLevel(d.niveau_requis, d.bonusLoots);
 
-    await prisma.destinations.create({
-      data: {
+    // B. Création / Mise à jour
+    const created = await prisma.destinations.upsert({
+      where: { nom: d.nom },
+      update: {
+        ocean: d.ocean,
+        type: d.type,
+        facilities: d.facilities,
+        pos_x: d.pos_x,
+        pos_y: d.pos_y,
+        description: d.description,
+        loots_possibles: loots, 
+        niveau_requis: d.niveau_requis,
+        xp_gain: d.niveau_requis * 20,
+        difficulte: d.niveau_requis * 10
+      },
+      create: {
         nom: d.nom,
-        region: d.region,
-        description: d.desc,
-        pos_x: d.posX,
-        pos_y: d.posY,
-        type_lieu: d.type_lieu || "ILE",
-        niveau_requis: d.niv,
-        duree_minutes: d.duree,
-        difficulte: d.diff,
-        xp_gain: d.xp,
-        gain_estime: d.berrys,
-        loots_possibles: finalLoots // Le JSON est créé ici
+        description: d.description,
+        image_url: d.image_url,
+        pos_x: d.pos_x,
+        pos_y: d.pos_y,
+        ocean: d.ocean,
+        type: d.type,
+        niveau_requis: d.niveau_requis,
+        facilities: d.facilities,
+        loots_possibles: loots,
+        difficulte: d.niveau_requis * 10,
+        xp_gain: d.niveau_requis * 20,
       }
     });
+    console.log(`📍 [${created.ocean}] ${created.nom} - ${created.facilities.length} Infras.`);
   }
 
-  console.log(`✅ ${destinationsData.length} destinations créées avec système de loot hybride.`);
+  // =========================================================
+  // 🚑 4. SÉCURITÉ JOUEURS
+  // =========================================================
+  const fushia = await prisma.destinations.findUnique({ where: { nom: 'Village de Fushia' } });
+  if (fushia) {
+      const result = await prisma.joueurs.updateMany({
+          where: { localisation_id: null }, 
+          data: { 
+              localisation_id: fushia.id,
+              statut_voyage: "A_QUAI"
+          }
+      });
+      if (result.count > 0) console.log(`🚑 ${result.count} joueurs rapatriés à Fushia.`);
+  }
+
+  console.log('🏁 Carte V2 générée avec succès !');
 }
 
 

@@ -1761,148 +1761,6 @@ async startStoryFight(userId: string, targetName: string) {
       // 👇 AJOUT : on passe true pour dire "C'est l'histoire, c'est gratuit"
       return this.startFight({ userId: userId, targetId: bot.id }, true);
   }
-// =================================================================
-  // 1. DÉPART EN EXPÉDITION (CORRIGÉ)
-  // =================================================================
-  async startExpedition(dto: { userId: string, destinationId: number }) {
-    const joueur = await this.prisma.joueurs.findUnique({ 
-        where: { id: dto.userId },
-        include: { 
-            inventaire: { 
-                where: { est_equipe: true },
-                include: { objets: true } 
-            } 
-        }
-    });
-    
-    const destination = await this.prisma.destinations.findUnique({ where: { id: dto.destinationId } });
-
-    if (!joueur || !destination) throw new BadRequestException("Destination inconnue.");
-
-    if ((joueur.niveau ?? 1) < (destination.niveau_requis ?? 1)) {
-        throw new BadRequestException("Niveau trop faible pour cette zone !");
-    }
-    
-    const now = new Date();
-    if (joueur.expedition_fin && new Date(joueur.expedition_fin) > now) {
-        throw new BadRequestException("Tu es déjà en voyage !");
-    }
-
-    // A. VITESSE DU NAVIRE
-    let vitesseNavire = 1.0;
-    const navireEquipe = joueur.inventaire.find(i => 
-        i.objets.type_equipement === 'NAVIRE' || i.objets.categorie === 'Navire'
-    );
-
-    if (navireEquipe && navireEquipe.objets.stats_bonus) {
-        const stats = navireEquipe.objets.stats_bonus as any;
-        if (stats.vitesse) vitesseNavire = Number(stats.vitesse);
-    }
-
-    // B. EFFET MÉTÉO
-    const meteo = await this.getMeteo();
-    const bonusMeteo = meteo.bonus_vitesse || 1.0; 
-
-    // C. CALCUL DURÉE FINALE
-    // ✅ CORRECTION 1 : On utilise uniquement 'duree_minutes' qui existe en BDD
-    const dureeMinutesBase = destination.duree_minutes || 5; 
-    const dureeBaseMs = dureeMinutesBase * 60 * 1000;
-    
-    // Calcul précis en ms
-    const dureeFinaleMs = Math.floor((dureeBaseMs * bonusMeteo) / vitesseNavire);
-    const finVoyage = new Date(now.getTime() + dureeFinaleMs);
-
-
-    // D. SAUVEGARDE
-    // ✅ CORRECTION 2 : On retire 'expedition_destination' car la colonne n'existe pas
-    await this.prisma.joueurs.update({
-        where: { id: dto.userId },
-        data: {
-            expedition_fin: finVoyage
-            // Si vous voulez sauvegarder le lieu, il faut ajouter "expedition_destination String?" 
-            // dans schema.prisma et faire un db push. Pour l'instant, on l'enlève.
-        }
-    });
-
-    await this.clearCache(dto.userId);
-
-    return { 
-        success: true, 
-        message: `Cap sur ${destination.nom} ! Météo : ${meteo.nom}.`, 
-        fin: finVoyage,
-        duree_ms: dureeFinaleMs 
-    };
-  }
-  // 2. ARRIVÉE / RÉCOLTE
-  async collectExpedition(userId: string) {
-    // ⚡ NEW : On inclut l'inventaire ici aussi pour le bonus Chance
-    const joueur = await this.prisma.joueurs.findUnique({ 
-        where: { id: userId },
-        include: { 
-            inventaire: { 
-                where: { est_equipe: true },
-                include: { objets: true } 
-            } 
-        }
-    });
-
-    if (!joueur) throw new BadRequestException("Joueur introuvable");
-
-    const now = new Date();
-
-    if (!joueur.expedition_fin) throw new BadRequestException("Tu ne voyages pas.");
-    if (joueur.expedition_fin > now) {
-        const reste = Math.ceil((joueur.expedition_fin.getTime() - now.getTime()) / 1000);
-        throw new BadRequestException(`Patience ! Encore ${reste} secondes.`);
-    }
-
-    const niveauJoueur = joueur.niveau ?? 1;
-    let gainXp = 20 * niveauJoueur;
-    let gainBerrys = 50 * niveauJoueur;
-
-    // ⚡ NEW : CALCUL DU BONUS CHANCE
-    let bonusChance = 0;
-    
-    const navireEquipe = joueur.inventaire.find(i => 
-        i.objets.type_equipement === 'NAVIRE' || i.objets.categorie === 'Navire'
-    );
-
-    if (navireEquipe && navireEquipe.objets.stats_bonus) {
-        const stats = navireEquipe.objets.stats_bonus as any;
-        if (stats.chance) bonusChance = Number(stats.chance);
-    }
-
-    // ⚡ NEW : APPLICATION DU BONUS (CRITIQUE SUR LES BERRYS)
-    // On augmente les gains de base selon le % de chance
-    // Ex: +10% chance = +10% Berrys garantis
-    const multiplicateur = 1 + (bonusChance / 100);
-    gainBerrys = Math.floor(gainBerrys * multiplicateur);
-
-    // Optionnel : Un "Critique" chanceux qui double tout (1 chance sur 10 basée sur le bonus)
-    // Si tu veux ajouter du piment au RNG
-    const isCrit = Math.random() * 100 < bonusChance; 
-    if (isCrit) {
-        gainBerrys *= 2;
-        gainXp *= 1.5;
-    }
-
-    await this.prisma.joueurs.update({
-        where: { id: userId },
-        data: {
-            expedition_fin: null,
-            xp: { increment: gainXp },
-            berrys: { increment: gainBerrys }
-        }
-    });
-    
-    return {
-        success: true,
-        message: isCrit ? "INCROYABLE ! Le navire a trouvé un trésor caché !" : "Arrivé à bon port !",
-        xp: gainXp,
-        berrys: gainBerrys,
-        bonusInfo: isCrit ? `CRITIQUE ! (Chance ${bonusChance}%)` : `(Inclus bonus navire +${bonusChance}%)`
-    };
-  }
 
 // =================================================================
   // 🔨 CRAFTER UN OBJET (Avec vérification de niveau)
@@ -2935,22 +2793,6 @@ async startStoryFight(userId: string, targetName: string) {
     return { success: true, message: "Deck mis à jour", deck };
   }
 
-  // --- 6. RÉCUPÉRER DONNÉES VOYAGE & CHANTIER ---
-async getTravelData() {
-    const [destinations, naviresRef] = await this.prisma.$transaction([
-        this.prisma.destinations.findMany({ 
-            orderBy: { niveau_requis: 'asc' } 
-        }),
-        this.prisma.navires_ref.findMany({
-            orderBy: { niveau: 'asc' }
-        })
-    ]);
-
-    // ⚡ AJOUT : On récupère la météo actuelle pour l'envoyer au front
-    const meteo = await this.getMeteo();
-
-    return { destinations, naviresRef, meteo };
-  }
 
   // --- 7. SOCIAL (CLASSEMENT & TITRES) ---
 
@@ -4371,6 +4213,158 @@ async recolterExpedition(dto: { userId: string }) {
 
     await this.clearCache(userId);
     return { success: true, message: "♻️ Personnage réinitialisé (Faction incluse) !" };
+  }
+
+  // =================================================================
+  // 🗺️ SYSTÈME DE NAVIGATION V2 (Temps Réel)
+  // =================================================================
+
+  // 1. RÉCUPÉRER LA CARTE (Par Océan)
+  async getMapData(userId: string) {
+    const joueur = await this.prisma.joueurs.findUnique({ 
+        where: { id: userId },
+        include: { localisation: true } 
+    });
+    
+    if (!joueur) throw new BadRequestException("Joueur introuvable");
+
+    // On détermine l'océan actuel (soit via l'île, soit par défaut East Blue)
+    const currentOcean = joueur.localisation?.ocean || 'EAST_BLUE';
+
+    // On récupère toutes les îles de cet océan
+    const islands = await this.prisma.destinations.findMany({
+        where: { ocean: currentOcean },
+        select: {
+            id: true,
+            nom: true,
+            pos_x: true,
+            pos_y: true,
+            type: true,
+            niveau_requis: true,
+            ocean: true
+        }
+    });
+
+    return {
+        currentLocation: joueur.localisation, // Où je suis
+        travelStatus: {
+            state: joueur.statut_voyage, // "A_QUAI" ou "EN_MER"
+            destinationId: joueur.trajet_arrivee_id,
+            arrivalTime: joueur.trajet_fin,
+            departId: joueur.trajet_depart_id
+        },
+        map: islands // Les points sur la carte
+    };
+  }
+
+  // 2. LANCER UN VOYAGE (Calcul Distance & Temps)
+  async startTravel(userId: string, destinationId: number) {
+    const joueur = await this.prisma.joueurs.findUnique({ 
+        where: { id: userId },
+        include: { localisation: true } // On a besoin de savoir d'où il part
+    });
+
+    if (!joueur) throw new BadRequestException("Joueur inconnu.");
+    if (joueur.statut_voyage === 'EN_MER') throw new BadRequestException("Tu navigues déjà !");
+    if (!joueur.localisation) throw new BadRequestException("Position inconnue (Bug).");
+    if (joueur.localisation.id === destinationId) throw new BadRequestException("Tu y es déjà.");
+
+    const destination = await this.prisma.destinations.findUnique({ where: { id: destinationId } });
+    if (!destination) throw new BadRequestException("Destination inconnue.");
+
+    // --- CALCUL DE DISTANCE (Pythagore) ---
+    const x1 = joueur.localisation.pos_x;
+    const y1 = joueur.localisation.pos_y;
+    const x2 = destination.pos_x;
+    const y2 = destination.pos_y;
+
+    // Distance euclidienne
+    const distance = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+
+    // --- CALCUL DU TEMPS ---
+    // Vitesse de base : 10 unités / minute
+    // Bonus vitesse navire : +10% par niveau de navire
+    const vitesseNavire = 10 * (1 + ((joueur.niveau_navire || 1) * 0.1));
+    
+    // Temps en minutes = Distance / Vitesse * Facteur d'échelle (ex: 5 pour rendre ça plus lent/rapide)
+    let dureeMinutes = Math.ceil((distance / vitesseNavire) * 5);
+    
+    // Minimum 1 minute de trajet
+    if (dureeMinutes < 1) dureeMinutes = 1;
+
+    // Calcul de la date d'arrivée
+    const arrivalTime = new Date(Date.now() + dureeMinutes * 60 * 1000);
+
+    // Mise à jour BDD
+    await this.prisma.joueurs.update({
+        where: { id: userId },
+        data: {
+            statut_voyage: 'EN_MER',
+            trajet_depart_id: joueur.localisation.id,
+            trajet_arrivee_id: destinationId,
+            trajet_fin: arrivalTime,
+            localisation_id: null // On quitte l'île, on est nulle part (en mer)
+        }
+    });
+
+    return {
+        success: true,
+        message: `Cap sur ${destination.nom} !`,
+        duree: dureeMinutes,
+        arrivalTime: arrivalTime
+    };
+  }
+
+  // 3. VÉRIFIER L'ARRIVÉE (Appelé par le front ou périodiquement)
+  async checkTravelArrival(userId: string) {
+    const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId } });
+    
+    if (!joueur || joueur.statut_voyage !== 'EN_MER' || !joueur.trajet_fin) {
+        return { status: 'A_QUAI', message: "Pas de voyage en cours." };
+    }
+
+    // Est-ce qu'on est arrivé ?
+    if (new Date() > new Date(joueur.trajet_fin)) {
+        
+        // ARRIVÉE !
+        const destination = await this.prisma.destinations.findUnique({ 
+            where: { id: joueur.trajet_arrivee_id! } 
+        });
+
+        if (!destination) {
+            // Cas d'erreur critique : on le renvoie au départ
+            await this.prisma.joueurs.update({
+                where: { id: userId },
+                data: { statut_voyage: 'A_QUAI', localisation_id: joueur.trajet_depart_id }
+            });
+            return { status: 'ERREUR', message: "Destination perdue en mer..." };
+        }
+
+        // Mise à jour : On est arrivé
+        await this.prisma.joueurs.update({
+            where: { id: userId },
+            data: {
+                statut_voyage: 'A_QUAI',
+                localisation_id: destination.id,
+                trajet_fin: null,
+                trajet_depart_id: null,
+                trajet_arrivee_id: null
+            }
+        });
+
+        // 🔔 Notification d'arrivée
+        await this.notifyPlayer(userId, "⚓ Terre en vue !", `Vous êtes arrivé à ${destination.nom}.`, "SUCCESS");
+
+        return { 
+            status: 'ARRIVED', 
+            destination: destination,
+            message: `Bienvenue à ${destination.nom} !` 
+        };
+    }
+
+    // Toujours en mer
+    const timeLeft = Math.ceil((new Date(joueur.trajet_fin).getTime() - Date.now()) / 1000);
+    return { status: 'EN_MER', timeLeftSeconds: timeLeft, message: "Navigation en cours..." };
   }
 }
 
