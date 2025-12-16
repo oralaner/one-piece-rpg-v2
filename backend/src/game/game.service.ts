@@ -4219,37 +4219,60 @@ async recolterExpedition(dto: { userId: string }) {
   // 🗺️ SYSTÈME DE NAVIGATION V2 (Temps Réel)
   // =================================================================
 
-  // 1. RÉCUPÉRER LA CARTE (Par Océan)
-async getMapData(userId: string) {
-    const joueur = await this.prisma.joueurs.findUnique({ 
+  async getMapData(userId: string) {
+    // 1. On récupère le joueur et sa position
+    let joueur: any = await this.prisma.joueurs.findUnique({ 
         where: { id: userId },
         include: { localisation: true } 
     });
     
     if (!joueur) throw new BadRequestException("Joueur introuvable");
 
+    // 🚨 AUTO-REPAIR : Si le joueur est "A_QUAI" mais n'a pas de localisation (Bug NULL)
+    if (!joueur.localisation && joueur.statut_voyage !== 'EN_MER') {
+        console.log(`🔧 Réparation automatique : Joueur ${joueur.pseudo} a une localisation NULL.`);
+        
+        // On cherche l'île de départ (Fushia)
+        const spawn = await this.prisma.destinations.findFirst({
+            where: { nom: { contains: 'Fushia', mode: 'insensitive' } }
+        });
+
+        if (spawn) {
+            // On met à jour la BDD
+            await this.prisma.joueurs.update({
+                where: { id: userId },
+                data: { localisation_id: spawn.id, statut_voyage: 'A_QUAI' }
+            });
+            // On met à jour l'objet local pour que l'affichage soit bon tout de suite
+            joueur.localisation = spawn;
+            joueur.localisation_id = spawn.id;
+        }
+    }
+
+    // 2. Déterminer l'océan pour filtrer la carte
+    // Si on vient de réparer, joueur.localisation est maintenant rempli
     const currentOcean = joueur.localisation?.ocean || 'EAST_BLUE';
 
+    // 3. Récupérer les îles
     const islands = await this.prisma.destinations.findMany({
-      where: { ocean: currentOcean },
-      select: {
-          id: true,
-          nom: true,
-          pos_x: true,
-          pos_y: true,
-          type: true,
-          niveau_requis: true,
-          ocean: true,
-          // 👇 AJOUTE CES DEUX LIGNES :
-          description: true,
-          facilities: true 
-      }
-  });
+        where: { ocean: currentOcean },
+        select: {
+            id: true,
+            nom: true,
+            pos_x: true,
+            pos_y: true,
+            type: true,
+            niveau_requis: true,
+            ocean: true,
+            description: true, // Pour éviter le crash frontend
+            facilities: true   // Pour éviter le crash frontend
+        }
+    });
 
     return {
-        currentLocation: joueur.localisation,
+        currentLocation: joueur.localisation, // Maintenant, ce ne sera plus NULL
         travelStatus: {
-            state: joueur.statut_voyage,
+            state: joueur.statut_voyage || 'A_QUAI',
             destinationId: joueur.trajet_arrivee_id,
             arrivalTime: joueur.trajet_fin,
             departId: joueur.trajet_depart_id
