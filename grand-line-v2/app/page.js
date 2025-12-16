@@ -3,7 +3,6 @@ import { useState, useEffect } from "react";
 import { useGameLogic } from "./hooks/useGameLogic";
 import { supabase } from "./lib/supabaseClient";
 import { getRankInfo, getFactionTheme, formatTemps } from "./utils/gameUtils";
-import TravelOverlay from "./components/TravelOverlay";
 import RewardModal from "./components/RewardModal";
 import LogoutButton from './components/LogoutButton';
 import { useQueryClient } from '@tanstack/react-query';
