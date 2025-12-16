@@ -82,12 +82,18 @@ const NavigationMap = () => {
             if (res.success) {
                 fetchMap();
                 setSelectedIsland(null);
+                // Petit feedback visuel
+                alert(`⚓ Cap sur ${selectedIsland.nom} !`);
             }
         } catch (e) {
-            alert(e.response?.data?.message || "Impossible de partir.");
+            console.error("Erreur voyage:", e);
+            // 👇 C'est ici qu'on récupère le vrai message du Backend
+            const serverMessage = e.response?.data?.message || e.message || "Erreur inconnue";
+            
+            // Affiche l'erreur précise à l'écran
+            alert(`⚠️ Le Capitaine dit : "${serverMessage}"`);
         }
     };
-
     const getFacilityIcon = (type) => {
         switch(type) {
             case 'PORT': return <Anchor size={12} className="text-blue-300" />;

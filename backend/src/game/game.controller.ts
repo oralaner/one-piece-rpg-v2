@@ -426,9 +426,10 @@ export class GameController {
   @Post('map/travel')
   @UseGuards(AuthGuard('jwt'))
   startTravel(@User() userId: string, @Body() body: { destinationId: number }) {
+    // 👇 LE Number(...) EST CRUCIAL ICI 👇
     return this.gameService.startTravel(userId, Number(body.destinationId));
   }
-
+  
   @Get('map/status')
   @UseGuards(AuthGuard('jwt'))
   checkTravel(@User() userId: string) {
