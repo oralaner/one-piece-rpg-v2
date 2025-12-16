@@ -515,13 +515,13 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                         {activeTab === 'chantier' && (
                         <ShipyardTab 
                             navire={equipement?.navire?.objets} 
-                            nextNavire={game.navireRef}          
+                            nextNavire={game.navireRef}  // <--- Vérifie bien le "game." devant
                             onUpgrade={game.ameliorerNavire} 
                             theme={currentTheme} 
                             berryCount={joueur.berrys} 
                             inventaire={game.inventaire} 
                         />
-                    )}                  
+                           )}                 
                         {activeTab === 'atelier' && (
                             <CraftTab 
                                 recettes={game.recettes} 
