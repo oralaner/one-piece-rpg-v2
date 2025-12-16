@@ -99,7 +99,7 @@ const NavigationMap = () => {
         <div className="relative w-full max-w-4xl mx-auto bg-blue-950/80 rounded-xl border border-blue-500/30 overflow-hidden shadow-2xl backdrop-blur-md">
             
             {/* 🌊 CARTE (BACKGROUND) */}
-            <div className="relative w-full h-[600px] bg-[url('https://i.ibb.co/XZw93TB4/map.jpg')] bg-cover bg-center opacity-90">
+            <div className="relative w-full h-[600px] bg-[url('https://i.postimg.cc/yB3ZBRnP/one-piece-world-map.jpg')] bg-cover bg-center opacity-90">
                 
                 {/* Grille Océanique (Déco) */}
                 <div className="absolute inset-0 bg-blue-900/40" style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
