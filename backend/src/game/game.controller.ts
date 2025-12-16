@@ -4,18 +4,14 @@ import { User } from '../auth/user.decorator';
 import { GameService } from './game.service';
 
 // DTOs imports
-import { InvestStatDto } from './invest-stat.dto';
-import { BuyItemDto } from './buy-item.dto';
 import { EquipItemDto } from './equip-item.dto';
 import { UnequipItemDto } from './unequip-item.dto';
 import { SellItemDto } from './sell-item.dto';
 import { StartFightDto } from './start-fight.dto';
 import { PlayTurnDto } from './play-turn.dto';
 import { PlayCasinoDto } from './play-casino.dto';
-import { TravelDto } from './travel.dto';
 import { CraftDto } from './craft.dto';
 import { BuySkillDto } from './buy-skill.dto';
-import { EquipDeckDto } from './equip-deck.dto';
 import { MarketSellDto } from './market-sell.dto';
 import { MarketBuyDto } from './market-buy.dto';
 import { CreateCrewDto } from './crew-create.dto';
