@@ -52,10 +52,6 @@ export default function Home() {
         // Actions Inventaire
         ouvrirModaleVente, confirmerVente, annulerVente, sellModalItem, session, setActiveTab,
         marketSellItem, marketPrice, setMarketPrice, confirmerMiseEnVente, annulerMiseEnVente,
-        // Actions Arène
-        areneFilter, setAreneFilter, chargerArene,
-        // Actions Raid
-        showRaidModal, setShowRaidModal
     } = game;
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -90,7 +86,6 @@ export default function Home() {
         };
 
         switch (tabId) {
-            case 'aventure': 
             case 'tchat': 
             case 'classement': 
                 return false;
@@ -179,7 +174,6 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
     
     // --- LISTE DES ONGLETS (Configuration) ---
     const tabs = [
-        { id: 'aventure', icon: '📜', label: 'Aventure' },
         { id: 'classement', icon: '🏆', label: 'Top' },
         { id: 'stats', icon: '📊', label: 'Stats' },
         { id: 'inventaire', icon: '🎒', label: 'Sac' },
@@ -444,17 +438,6 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                         />
                         )}
                         
-                        {/* INJECTION DES FEATURES */}
-
-                        {activeTab === 'aventure' && (
-                        <StoryTab 
-                            userId={joueur.id} 
-                            notify={(msg, type) => game.setNotification({ message: msg, type })}
-                            theme={currentTheme}
-                            onStartFight={game.lancerCombatHistoire}
-                            setLevelUpData={setLevelUpData} // 👈 LA CLÉ
-                        />
-                          )}
                           {/* 👇 AJOUTE CE BLOC ICI (par exemple juste après 'aventure' ou à la fin de la liste) 👇 */}
                         {activeTab === 'ADMIN' && joueur?.role === 'ADMIN' && (
                             <div className="h-full overflow-y-auto custom-scrollbar p-4">
