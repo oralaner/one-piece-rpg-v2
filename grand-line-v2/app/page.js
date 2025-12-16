@@ -32,7 +32,6 @@ import HakiTab from "./features/HakiTab";
 import DeckTab from "./features/DeckTab";
 import StatsTab from "./features/StatsTab";
 import ArenaTab from "./features/ArenaTab";
-import StoryTab from './features/StoryTab';
 import AdminTab from "./features/AdminTab";
 
 

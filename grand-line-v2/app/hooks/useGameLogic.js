@@ -151,32 +151,6 @@ export const useGameLogic = () => {
         allItemDefinitions
     } = useAllItems(session?.user?.id);
 
-    // --- FONCTION SPÉCIALE : COMBAT HISTOIRE ---
-    const lancerCombatHistoire = async (targetName) => {
-        try {
-            const res = await api.post('/game/combat/start-story', { 
-                userId: joueur.id, 
-                targetName 
-            });
-            
-            if (res.success) {
-                setActiveTab('combat_actif');
-                
-                const combatData = await api.get(`/game/combat/current/${joueur.id}`);
-                
-                queryClient.setQueryData(['activeFight', session?.user?.id], combatData);
-
-                if (setCombatSession) {
-                    setCombatSession(combatData.combat); 
-                } else {
-                    console.error("setCombatSession introuvable");
-                }
-            }
-        } catch (err) {
-            notify(err.message || "Erreur lancement combat", 'error');
-        }
-    };
-
     // =========================================================
     //              CHARGEMENT LAZY DES ONGLETS
     // =========================================================
