@@ -338,12 +338,6 @@ export class GameController {
     return this.gameService.chooseFaction(userId, body.faction);
   }
 
-  @Post('ship/upgrade')
-  @UseGuards(AuthGuard('jwt'))
-  async upgradeShip(@User() userId: string) {
-    return this.gameService.upgradeShip(userId);
-  }
-
   @Get('meteo')
   async getMeteo() {
     return this.gameService.getMeteo();

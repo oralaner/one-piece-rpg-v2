@@ -198,7 +198,7 @@ export const useGameLogic = () => {
         
         casinoState, cooldowns, jouerCasino, allItemDefinitions,
         
-        competences, mesCompetences, acheterCompetence, equiperCompetence, eveillerHaki, navireRef, voyager, ameliorerNavire,
+        competences, mesCompetences, acheterCompetence, equiperCompetence, eveillerHaki, voyager, ameliorerNavire,
         
         messages, chatChannel, setChatChannel, envoyerMessage, topJoueurs, topEquipages, 
         leaderboardType, setLeaderboardType, changerLeaderboard,
@@ -216,7 +216,5 @@ export const useGameLogic = () => {
             energie_max: playerData.energie_max || 10,
             last_energie_update: playerData.last_energie_update
         } : null,
-
-        navireRef: playerData?.nextNavire, 
     };
 };
