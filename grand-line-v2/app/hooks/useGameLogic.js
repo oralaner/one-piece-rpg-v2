@@ -10,7 +10,6 @@ import { useCombat } from './useCombat';
 import { useInventory } from './useInventory';
 import { useCasino } from './useCasino';
 import { useSkills } from './useSkills';
-import { useTravel } from './useTravel';
 import { useSocial } from './useSocial';
 import { usePlayerActions } from './usePlayerActions';
 import { useAllItems } from './useAllItems';
@@ -23,7 +22,6 @@ export const useGameLogic = () => {
     const [notificationState, setNotificationState] = useState(null);
     const [activeTab, setActiveTab] = useState(null);
     const [rewardModal, setRewardModal] = useState(null);
-    const [expeditionChrono, setExpeditionChrono] = useState(null);
     const [levelUpData, setLevelUpData] = useState(null);
     
     const { data: meteoData } = useQuery({
@@ -86,32 +84,6 @@ export const useGameLogic = () => {
             notificationTimerRef.current = null;
         }, 2000); // 👈 C'est ici qu'on règle la durée
     };
-    // --- 5. MOTEUR DU CHRONO (Voyage) ---
-    useEffect(() => {
-        if (!joueur) return;
-        
-        const updateChrono = () => {
-             if (joueur.expedition_fin) {
-                const now = new Date().getTime();
-                const fin = new Date(joueur.expedition_fin).getTime();
-                const diff = fin - now;
-
-                if (diff <= 0) {
-                    setExpeditionChrono(0);
-                } else {
-                    setExpeditionChrono(diff);
-                }
-            } 
-            else if (expeditionChrono !== null) {
-                 setExpeditionChrono(null);
-            }
-        };
-
-        updateChrono();
-        const interval = setInterval(updateChrono, 1000);
-        return () => clearInterval(interval);
-
-    }, [joueur?.expedition_fin]); 
 
     // =========================================================
     //                    MODULES LOGIQUES (HOOKS)
@@ -154,18 +126,6 @@ export const useGameLogic = () => {
         chargerMesCompetences
     } = useSkills(session, notify, joueur);
 
-    // F. VOYAGE & NAVIRE 🧭
-    const {
-        destinations, navireRef,
-        voyager, recolterExpedition, ameliorerNavire, chargerChantier
-    } = useTravel(
-        session, 
-        notify, 
-        setRewardModal, 
-        joueur, 
-        setExpeditionChrono,
-        setLevelUpData
-    );
 
     // G. SOCIAL 🗣️
     const {
@@ -266,7 +226,7 @@ export const useGameLogic = () => {
         
         competences, mesCompetences, acheterCompetence, equiperCompetence, eveillerHaki,
         
-        destinations, navireRef, voyager, recolterExpedition, ameliorerNavire, expeditionChrono,
+        destinations, navireRef, voyager, recolterExpedition, ameliorerNavire,
         
         messages, chatChannel, setChatChannel, envoyerMessage, topJoueurs, topEquipages, 
         leaderboardType, setLeaderboardType, changerLeaderboard,
