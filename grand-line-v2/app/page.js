@@ -178,7 +178,6 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
         { id: 'inventaire', icon: '🎒', label: 'Sac' },
         { id: 'deck', icon: '📘', label: 'Skills' },
         { id: 'map', icon: '🧭', label: 'Carte' },
-        { id: 'chantier', icon: '⛵', label: 'Navire' },   
         { id: 'boutique', icon: '🏪', label: 'Shop' },
         { id: 'marche', icon: '⚖️', label: 'HDV' },
         { id: 'casino', icon: '🎰', label: 'Casino' },
@@ -511,17 +510,7 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                                 theme={currentTheme}
                             />
                         )}                        
-                        {activeTab === 'tchat' && <ChatTab messages={game.messages} onSendMessage={game.envoyerMessage} channel={game.chatChannel} setChannel={game.setChatChannel} userFaction={joueur.faction} hasCrew={!!joueur.equipage_id} theme={currentTheme} userId={joueur.id} />}
-                        {activeTab === 'chantier' && (
-                        <ShipyardTab 
-                            navire={equipement?.navire?.objets} 
-                            nextNavire={game.navireRef}  // <--- Vérifie bien le "game." devant
-                            onUpgrade={game.ameliorerNavire} 
-                            theme={currentTheme} 
-                            berryCount={joueur.berrys} 
-                            inventaire={game.inventaire} 
-                        />
-                           )}                 
+                        {activeTab === 'tchat' && <ChatTab messages={game.messages} onSendMessage={game.envoyerMessage} channel={game.chatChannel} setChannel={game.setChatChannel} userFaction={joueur.faction} hasCrew={!!joueur.equipage_id} theme={currentTheme} userId={joueur.id} />}               
                         {activeTab === 'atelier' && (
                             <CraftTab 
                                 recettes={game.recettes} 
