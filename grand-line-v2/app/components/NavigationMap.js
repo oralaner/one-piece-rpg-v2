@@ -41,23 +41,21 @@ const NavigationMap = () => {
         mapRef.current.scrollTop = startPos.current.top - dy;
     };
 
-    // 📍 MODE DEBUG : CLICK TO GET COORDS
+    // 📍 MODE DEBUG : CLICK TO GET COORDS (SEXTANT DU DÉVELOPPEUR)
     const handleMapClick = (e) => {
-        // On ne déclenche pas si on drag ou si on clique sur une île
         if (isDragging || e.target.closest('button')) return;
 
-        // Calcul de la position relative dans l'image
         const rect = e.currentTarget.getBoundingClientRect();
+        
+        // Calcul précis basé sur la taille réelle affichée
+        // On prend en compte le scroll du parent si nécessaire
         const xPixels = e.clientX - rect.left;
         const yPixels = e.clientY - rect.top;
 
-        // Conversion en coordonnées BDD
         const dbX = Math.round(xPixels / RATIO_X);
         const dbY = Math.round(yPixels / RATIO_Y);
 
-        // Affiche pour le dév
         alert(`📍 COORDONNÉES POUR SUPABASE :\n\npos_x : ${dbX}\npos_y : ${dbY}`);
-        console.log(`Island Coords -> pos_x: ${dbX}, pos_y: ${dbY}`);
     };
 
     // Chargement des données
@@ -67,11 +65,16 @@ const NavigationMap = () => {
             setMapData(data);
             setLoading(false);
             
-            // Centrage initial sur le joueur (si pas en train de drag)
+            // Centrage initial sur le joueur
             if (data?.currentLocation && mapRef.current) {
-                const targetX = (data.currentLocation.pos_x * RATIO_X) - (mapRef.current.clientWidth / 2);
-                const targetY = (data.currentLocation.pos_y * RATIO_Y) - (mapRef.current.clientHeight / 2);
-                mapRef.current.scrollTo({ left: targetX, top: targetY, behavior: 'smooth' });
+                // On attend un tick pour que le DOM soit prêt
+                setTimeout(() => {
+                    if (mapRef.current) {
+                        const targetX = (data.currentLocation.pos_x * RATIO_X) - (mapRef.current.clientWidth / 2);
+                        const targetY = (data.currentLocation.pos_y * RATIO_Y) - (mapRef.current.clientHeight / 2);
+                        mapRef.current.scrollTo({ left: targetX, top: targetY, behavior: 'smooth' });
+                    }
+                }, 100);
             }
         } catch (e) {
             console.error("Erreur chargement map", e);
@@ -114,7 +117,6 @@ const NavigationMap = () => {
                 alert(`⚓ Cap sur ${selectedIsland.nom} !`);
             }
         } catch (e) {
-            console.error("Erreur voyage:", e);
             const serverMessage = e.response?.data?.message || e.message || "Erreur inconnue";
             alert(`⚠️ Le Capitaine dit : "${serverMessage}"`);
         }
@@ -137,7 +139,6 @@ const NavigationMap = () => {
     const isSailing = travelStatus.state === 'EN_MER';
 
     return (
-        // Conteneur Principal : Prend toute la hauteur/largeur disponible
         <div className="relative w-full h-full bg-slate-900 overflow-hidden rounded-xl border border-slate-700 shadow-2xl group">
             
             {/* Zone de Scroll (Drag & Drop) */}
@@ -149,17 +150,22 @@ const NavigationMap = () => {
                 onMouseUp={onMouseUp} 
                 onMouseLeave={onMouseUp}
             >
-                {/* L'IMAGE ET LES POINTS */}
+                {/* L'IMAGE ET LES POINTS (DIMENSIONS FORCÉES) */}
                 <div 
-                    style={{ width: MAP_WIDTH, height: MAP_HEIGHT, position: 'relative' }}
-                    onClick={handleMapClick} // 👈 CLICK POUR DEBUG POSITION
+                    style={{ 
+                        width: MAP_WIDTH, 
+                        height: MAP_HEIGHT,
+                        minWidth: MAP_WIDTH,   // 👈 EMPÊCHE L'ÉCRASEMENT
+                        minHeight: MAP_HEIGHT, // 👈 EMPÊCHE L'ÉCRASEMENT
+                        position: 'relative' 
+                    }}
+                    onClick={handleMapClick} 
                 >
-                    
                     {/* Fond de carte */}
                     <img 
                         src={MAP_IMAGE_URL} 
                         alt="World Map" 
-                        className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
+                        className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none"
                         draggable="false"
                     />
 
@@ -198,7 +204,7 @@ const NavigationMap = () => {
                                 style={{ 
                                     left: island.pos_x * RATIO_X, 
                                     top: island.pos_y * RATIO_Y,
-                                    transform: 'translate(-50%, -100%)' // L'ancre pointe sur le lieu exact
+                                    transform: 'translate(-50%, -100%)' 
                                 }}
                             >
                                 <button
@@ -207,7 +213,6 @@ const NavigationMap = () => {
                                         ${isSelectable ? 'cursor-pointer hover:scale-110 hover:-translate-y-2' : 'cursor-default'}
                                     `}
                                 >
-                                    {/* Icône de Pin */}
                                     <svg 
                                         xmlns="http://www.w3.org/2000/svg" 
                                         width={isCurrent || isTarget ? "48" : "32"} 
@@ -224,13 +229,11 @@ const NavigationMap = () => {
                                         <circle cx="12" cy="10" r="3" fill="black" fillOpacity="0.2" />
                                     </svg>
 
-                                    {/* Effet Ping */}
                                     {(isCurrent || isTarget) && (
                                         <div className="absolute inset-0 bg-white/30 rounded-full animate-ping opacity-75"></div>
                                     )}
                                 </button>
 
-                                {/* Nom de l'île */}
                                 <span className={`
                                     mt-[-5px] text-[12px] font-black px-2 py-0.5 rounded backdrop-blur-md border border-white/20 whitespace-nowrap shadow-xl transition-opacity duration-300
                                     ${isCurrent ? 'bg-yellow-600 text-white border-yellow-400 z-50 opacity-100' : 'bg-black/70 text-slate-200 opacity-0 group-hover/marker:opacity-100'}
@@ -243,7 +246,7 @@ const NavigationMap = () => {
                 </div>
             </div>
 
-            {/* --- HUD BAS (Fixe) --- */}
+            {/* HUD BAS */}
             {!selectedIsland && (
                 <div className="absolute bottom-0 left-0 right-0 bg-slate-950/90 backdrop-blur-md border-t border-slate-700 p-3 z-40 flex justify-between items-center shadow-2xl">
                     {isSailing ? (
@@ -277,14 +280,14 @@ const NavigationMap = () => {
                                 </div>
                             </div>
                             <div className="text-right text-[10px] text-slate-500 italic max-w-[150px]">
-                                Glissez pour explorer le monde.<br/>Cliquez pour calibrer (Debug).
+                                Cliquez sur la carte pour voir les coordonnées (Debug).
                             </div>
                         </div>
                     )}
                 </div>
             )}
 
-            {/* --- MODALE DÉTAILS ÎLE --- */}
+            {/* MODALE DÉTAILS */}
             <AnimatePresence>
                 {selectedIsland && (
                     <motion.div 
