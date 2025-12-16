@@ -220,15 +220,7 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
     // --- RENDER ---
     return (
         <main className={`h-screen w-screen ${currentTheme.appBg} font-sans relative overflow-hidden selection:bg-white/30 flex flex-col md:flex-row`}>
-            {/* --- NOUVELLE ANIMATION DE VOYAGE --- */}
-            {/* On affiche l'overlay SI le chrono tourne ET qu'on est pas en combat */}
-            {(game.expeditionChrono !== null && game.expeditionChrono > 0 && activeTab !== 'combat_actif') && (
-                <TravelOverlay 
-                    timeLeft={game.expeditionChrono} 
-                    theme={currentTheme} 
-                />
-            )}
-            {/* Texture de fond */}
+                        {/* Texture de fond */}
             <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] pointer-events-none z-0"></div>
 
             {/* Notifications */}

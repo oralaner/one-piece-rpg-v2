@@ -4350,54 +4350,68 @@ async getMapData(userId: string) {
         arrivalTime: arrivalTime
     };
   }
-  // 3. VÉRIFIER L'ARRIVÉE (Appelé par le front ou périodiquement)
+ // 3. VÉRIFIER L'ARRIVÉE (Version Blindée)
   async checkTravelArrival(userId: string) {
     const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId } });
     
-    if (!joueur || joueur.statut_voyage !== 'EN_MER' || !joueur.trajet_fin) {
-        return { status: 'A_QUAI', message: "Pas de voyage en cours." };
+    // Si le joueur n'est pas en mer, tout va bien
+    if (!joueur || joueur.statut_voyage !== 'EN_MER') {
+        return { status: 'A_QUAI', message: "À quai." };
+    }
+
+    // 🚨 SÉCURITÉ : Si "EN_MER" mais pas de date de fin (Bug), on annule le voyage
+    if (!joueur.trajet_fin) {
+        await this.prisma.joueurs.update({
+            where: { id: userId },
+            data: { 
+                statut_voyage: 'A_QUAI', 
+                // On le remet à son point de départ (ou Fushia par défaut s'il n'en a pas)
+                localisation_id: joueur.trajet_depart_id || 1 
+            }
+        });
+        return { status: 'A_QUAI', message: "Voyage annulé (Erreur technique)." };
     }
 
     // Est-ce qu'on est arrivé ?
     if (new Date() > new Date(joueur.trajet_fin)) {
         
-        // ARRIVÉE !
-        const destination = await this.prisma.destinations.findUnique({ 
-            where: { id: joueur.trajet_arrivee_id! } 
-        });
-
-        if (!destination) {
-            // Cas d'erreur critique : on le renvoie au départ
-            await this.prisma.joueurs.update({
+        // On récupère la destination
+        let destinationId = joueur.trajet_arrivee_id;
+        
+        // 🚨 SÉCURITÉ : Si pas d'ID arrivée, on le renvoie au départ
+        if (!destinationId) {
+             await this.prisma.joueurs.update({
                 where: { id: userId },
-                data: { statut_voyage: 'A_QUAI', localisation_id: joueur.trajet_depart_id }
+                data: { statut_voyage: 'A_QUAI', localisation_id: joueur.trajet_depart_id || 1 }
             });
-            return { status: 'ERREUR', message: "Destination perdue en mer..." };
+            return { status: 'A_QUAI', message: "Perdu en mer... Retour au port." };
         }
 
-        // Mise à jour : On est arrivé
+        const destination = await this.prisma.destinations.findUnique({ 
+            where: { id: destinationId } 
+        });
+
+        // Mise à jour : ARRIVÉE VALIDÉE
         await this.prisma.joueurs.update({
             where: { id: userId },
             data: {
                 statut_voyage: 'A_QUAI',
-                localisation_id: destination.id,
+                localisation_id: destinationId,
                 trajet_fin: null,
                 trajet_depart_id: null,
-                trajet_arrivee_id: null
+                trajet_arrivee_id: null,
+                // On peut ajouter de l'XP de navigation ici si tu veux
             }
         });
-
-        // 🔔 Notification d'arrivée
-        await this.notifyPlayer(userId, "⚓ Terre en vue !", `Vous êtes arrivé à ${destination.nom}.`, "SUCCESS");
 
         return { 
             status: 'ARRIVED', 
             destination: destination,
-            message: `Bienvenue à ${destination.nom} !` 
+            message: `⚓ Arrivée à ${destination?.nom || 'destination'} !` 
         };
     }
 
-    // Toujours en mer
+    // Toujours en navigation (Cas normal)
     const timeLeft = Math.ceil((new Date(joueur.trajet_fin).getTime() - Date.now()) / 1000);
     return { status: 'EN_MER', timeLeftSeconds: timeLeft, message: "Navigation en cours..." };
   }
