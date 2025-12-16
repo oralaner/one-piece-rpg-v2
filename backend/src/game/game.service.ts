@@ -4143,6 +4143,7 @@ async recolterExpedition(dto: { userId: string }) {
             facilities: true
         }
     });
+    
 
     return {
         currentLocation: joueur.localisation, 

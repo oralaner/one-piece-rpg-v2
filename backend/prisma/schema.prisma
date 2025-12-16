@@ -220,8 +220,7 @@ model joueurs {
 
   // --- RELATIONS ---
   equipage            equipages?  @relation(fields: [equipage_id], references: [id])
-  localisation        destinations? @relation(fields: [expedition_dest_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  
+  localisation        destinations? @relation(fields: [localisation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)  
   equip_arme          inventaire? @relation("joueurs_equip_arme_idToinventaire", fields: [equip_arme_id], references: [id], onUpdate: NoAction)
   equip_tete          inventaire? @relation("joueurs_equip_tete_idToinventaire", fields: [equip_tete_id], references: [id], onUpdate: NoAction)
   equip_corps         inventaire? @relation("joueurs_equip_corps_idToinventaire", fields: [equip_corps_id], references: [id], onUpdate: NoAction)
