@@ -24,7 +24,6 @@ import CasinoTab from "./features/CasinoTab";
 import NavigationMap from './components/NavigationMap';
 import TeamTab from "./features/TeamTab";
 import ChatTab from "./features/ChatTab";
-import ShipyardTab from "./features/ShipyardTab";
 import CraftTab from "./features/CraftTab";
 import MarketTab from "./features/MarketTab";
 import LeaderboardTab from "./features/LeaderboardTab";
