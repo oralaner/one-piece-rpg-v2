@@ -226,7 +226,7 @@ export const useGameLogic = () => {
         
         competences, mesCompetences, acheterCompetence, equiperCompetence, eveillerHaki,
         
-        destinations, navireRef, voyager, recolterExpedition, ameliorerNavire,
+        destinations, navireRef, voyager, ameliorerNavire,
         
         messages, chatChannel, setChatChannel, envoyerMessage, topJoueurs, topEquipages, 
         leaderboardType, setLeaderboardType, changerLeaderboard,

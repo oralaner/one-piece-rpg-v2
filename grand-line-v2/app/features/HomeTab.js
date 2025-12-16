@@ -3,7 +3,7 @@ import { formatChronoLong, getRankInfo } from '../utils/gameUtils';
 import DailyQuestsWidget from './DailyQuestsWidget';
 import EnergyBar from '../components/EnergyBar'; 
 
-const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipages, onNavigate, theme, monEquipage, membresEquipage }) => { 
+const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, theme, monEquipage, membresEquipage }) => { 
     
     // --- CALCULS STATS ---
     const pvMaxCalcul = statsTotales?.pv_max_total || 100;
@@ -19,8 +19,6 @@ const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipa
     const LEVEL_REQ_QUETES = 10;
     const LEVEL_REQ_ARENE = 10;
     const LEVEL_REQ_CLASSEMENT = 10;
-
-    const isExpeditionLocked = (joueur.chapitre_actuel || 1) < 2; 
     const isQuestsLocked = (joueur.niveau || 1) < LEVEL_REQ_QUETES;
     const isAreneLocked = (joueur.niveau || 1) < LEVEL_REQ_ARENE;
     const isRankLocked = (joueur.niveau || 1) < LEVEL_REQ_CLASSEMENT;
@@ -169,43 +167,6 @@ const HomeTab = ({ joueur, statsTotales, expeditionChrono, topJoueurs, topEquipa
                             </div>
                         </div>
                     </div>
-
-                    {/* CARTE 2 : EXPÉDITIONS */}
-                    <div 
-                        onClick={() => !isExpeditionLocked && onNavigate('expeditions')}
-                        className="bg-slate-900/60 border border-white/5 p-4 rounded-2xl relative overflow-hidden group cursor-pointer hover:border-indigo-500/30 transition-all duration-300 hover:shadow-[0_0_20px_rgba(99,102,241,0.1)]"
-                    >
-                        {isExpeditionLocked && <LockedOverlay label="Chapitre 1 Requis" />}
-                        <div className="absolute -right-4 -bottom-4 text-7xl opacity-5 group-hover:opacity-10 transition-opacity -rotate-12">🧭</div>
-
-                        <div className={`relative z-10 flex flex-col h-full justify-between gap-2 ${isExpeditionLocked ? 'blur-sm opacity-50' : ''}`}>
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <h3 className="text-[9px] font-bold uppercase text-slate-400 tracking-widest mb-0.5">Exploration</h3>
-                                    <div className="mt-0.5">
-                                        {joueur.expedition_fin ? (
-                                            <div>
-                                                <p className="text-xl font-black text-indigo-300 font-mono tracking-tight animate-pulse">
-                                                    {formatChronoLong(expeditionChrono)}
-                                                </p>
-                                                <span className="text-[9px] bg-indigo-500/20 text-indigo-300 px-1.5 py-px rounded border border-indigo-500/30">En cours</span>
-                                            </div>
-                                        ) : (
-                                            <p className="text-xl font-black text-white">Disponible</p>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 text-lg border border-indigo-500/20">
-                                    🗺️
-                                </div>
-                            </div>
-
-                            <p className="text-[9px] text-indigo-400 font-bold uppercase text-right group-hover:translate-x-1 transition-transform">
-                                {joueur.expedition_fin ? "Voir →" : "Partir →"}
-                            </p>
-                        </div>
-                    </div>
-
                     {/* CARTE 3 : ARÈNE */}
                     <div 
                         onClick={() => !isAreneLocked && onNavigate('arene')}

@@ -435,7 +435,6 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                             <HomeTab 
                             joueur={joueur} 
                             statsTotales={statsTotales} 
-                            expeditionChrono={game.expeditionChrono} 
                             topJoueurs={game.topJoueurs} 
                             topEquipages={game.topEquipages} 
                             onNavigate={game.setActiveTab} 
