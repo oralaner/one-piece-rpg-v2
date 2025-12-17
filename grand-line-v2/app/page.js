@@ -115,11 +115,10 @@ export default function Home() {
 
     // --- LISTE DES ONGLETS ---
     const tabs = [
-        { id: 'classement', icon: '🏆', label: 'Top' },
+        { id: 'map', icon: '🧭', label: 'Carte' },
         { id: 'stats', icon: '📊', label: 'Stats' },
         { id: 'inventaire', icon: '🎒', label: 'Sac' },
         { id: 'deck', icon: '📘', label: 'Skills' },
-        { id: 'map', icon: '🧭', label: 'Carte' },
         { id: 'boutique', icon: '🏪', label: 'Shop', req: 'SHOP' },
         { id: 'marche', icon: '⚖️', label: 'HDV', req: 'MARCHE' },
         { id: 'casino', icon: '🎰', label: 'Casino', req: 'CASINO' },
@@ -127,6 +126,7 @@ export default function Home() {
         { id: 'atelier', icon: '🔨', label: 'Craft', req: 'FORGE' },
         { id: 'equipage', icon: '🍺', label: 'Alliance', req: 'TAVERNE' },
         { id: 'haki', icon: '👁️', label: 'Haki' },
+        { id: 'classement', icon: '🏆', label: 'Top' },
         { id: 'tchat', icon: '💬', label: 'Tchat' },
     ];
 

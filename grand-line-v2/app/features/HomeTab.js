@@ -7,8 +7,13 @@ const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, t
     
     // --- 1. LOGIQUE DE LOCALISATION & SERVICES ---
     const isEnMer = joueur.statut_voyage === 'EN_MER';
+    
+    // Sécurisation maximale pour le nom du lieu
     const currentLocation = joueur.localisation;
-    const locationName = isEnMer ? "En Haute Mer 🌊" : (currentLocation?.nom || "Zone Inconnue");
+    const locationName = isEnMer 
+        ? "En Haute Mer 🌊" 
+        : (currentLocation && currentLocation.nom ? currentLocation.nom : "Zone Inconnue");
+        
     const facilities = currentLocation?.facilities || [];
 
     // Helper pour les icônes de services
@@ -43,11 +48,10 @@ const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, t
     const isQuestsLocked = (joueur.niveau || 1) < LEVEL_REQ_QUETES;
     const isRankLocked = (joueur.niveau || 1) < LEVEL_REQ_CLASSEMENT;
 
-    // 🔥 LOGIQUE DE VERROUILLAGE ARÈNE (Niveau + Lieu)
+    // 🔥 LOGIQUE DE VERROUILLAGE ARÈNE
     const hasArenaHere = !isEnMer && facilities.includes('ARENE');
     const isLevelOkForArena = (joueur.niveau || 1) >= LEVEL_REQ_ARENE;
     
-    // Pourquoi est-ce bloqué ?
     let arenaBlockReason = null;
     if (!isLevelOkForArena) arenaBlockReason = `Niv ${LEVEL_REQ_ARENE} Requis`;
     else if (isEnMer) arenaBlockReason = "En Mer";
@@ -109,7 +113,7 @@ const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, t
     return (
         <div className="flex flex-col h-full animate-fadeIn max-w-[95%] mx-auto p-2 pb-16 space-y-4">
             
-            {/* 1. EN-TÊTE HERO (LIEU & FACTION) */}
+            {/* 1. EN-TÊTE HERO */}
             <div className="relative text-center py-2">
                 <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1/2 h-16 bg-gradient-to-r ${factionStyle.gradient} opacity-15 blur-2xl rounded-full`}></div>
                 
@@ -122,23 +126,9 @@ const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, t
                         <span className="text-2xl filter drop-shadow-md scale-x-[-1]">{factionStyle.icon}</span>
                     </div>
                     
-                    {/* 📍 AFFICHAGE DU LIEU ACTUEL */}
-                    <div className="flex flex-col items-center mb-3">
-                        <p className="text-xs font-bold uppercase tracking-widest text-slate-300 bg-black/40 px-3 py-1 rounded-full border border-white/10 mb-1.5">
-                            📍 {locationName}
-                        </p>
-                        
-                        {/* Liste des services disponibles */}
-                        {!isEnMer && facilities.length > 0 && (
-                            <div className="flex gap-1">
-                                {facilities.map((fac) => (
-                                    <span key={fac} title={fac} className="text-sm bg-slate-800/80 px-1.5 py-0.5 rounded border border-white/5 cursor-help">
-                                        {getFacilityEmoji(fac)}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500 mb-3">
+                        {joueur.faction || "Vagabond des mers"}
+                    </p>
 
                     <div className={`flex flex-wrap justify-center gap-2 transition-all duration-500 ${isRankLocked ? 'opacity-40 blur-[1px] grayscale pointer-events-none' : ''}`}>
                         <StatBadge icon="💪" label="Niveau" value={myRankLevel} colorClass="text-white" />
@@ -154,7 +144,7 @@ const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, t
                 
                 <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-3 auto-rows-min">
                     
-                    {/* CARTE 1 : SANTÉ */}
+                    {/* --- CARTE 1 : SANTÉ --- */}
                     <div onClick={() => onNavigate('inventaire')} className="bg-slate-900/60 border border-white/5 p-4 rounded-2xl relative overflow-hidden group cursor-pointer hover:border-emerald-500/30 transition-all duration-300">
                         <div className="absolute -right-4 -bottom-4 text-7xl opacity-5 group-hover:opacity-10 transition-opacity rotate-12">💚</div>
                         <div className="relative z-10 flex flex-col h-full justify-between gap-2">
@@ -176,12 +166,50 @@ const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, t
                         </div>
                     </div>
 
-                    {/* CARTE 2 : ARÈNE (DYNAMIQUE) */}
+                    {/* --- CARTE 2 : NAVIGATION (NOUVEAU) --- */}
+                    <div onClick={() => onNavigate('map')} className="bg-blue-900/20 border border-blue-500/20 p-4 rounded-2xl relative overflow-hidden group cursor-pointer hover:border-blue-400/50 transition-all duration-300 hover:shadow-[0_0_20px_rgba(59,130,246,0.15)]">
+                        {/* Fond décoratif */}
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 blur-xl rounded-full translate-x-10 -translate-y-10"></div>
+                        <div className="absolute -right-4 -bottom-4 text-7xl opacity-5 group-hover:opacity-15 transition-opacity -rotate-12 text-blue-300">🧭</div>
+
+                        <div className="relative z-10 flex flex-col h-full justify-between gap-2">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <h3 className="text-[9px] font-bold uppercase text-blue-300 tracking-widest mb-0.5">Position Actuelle</h3>
+                                    <p className="text-lg font-black text-white leading-tight line-clamp-2">
+                                        {locationName}
+                                    </p>
+                                </div>
+                                <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-300 text-lg border border-blue-500/30">
+                                    🗺️
+                                </div>
+                            </div>
+
+                            {/* Liste des Services */}
+                            <div className="space-y-1">
+                                <div className="flex gap-1 h-5 items-center">
+                                    {!isEnMer && facilities.length > 0 ? (
+                                        facilities.map((fac) => (
+                                            <span key={fac} className="text-sm bg-slate-900/80 px-1.5 py-0.5 rounded border border-white/5" title={fac}>
+                                                {getFacilityEmoji(fac)}
+                                            </span>
+                                        ))
+                                    ) : (
+                                        <span className="text-[10px] text-slate-500 italic">{isEnMer ? "En voyage..." : "Zone sauvage"}</span>
+                                    )}
+                                </div>
+                                <p className="text-[9px] text-blue-400 font-bold uppercase text-right group-hover:translate-x-1 transition-transform">
+                                    Ouvrir la Carte →
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* --- CARTE 3 : ARÈNE --- */}
                     <div 
                         onClick={() => !isAreneBlocked && onNavigate('arene')}
                         className="md:col-span-2 bg-gradient-to-br from-slate-900/80 to-slate-900/40 border border-white/5 p-4 rounded-2xl relative overflow-hidden group cursor-pointer hover:border-red-500/30 transition-all duration-300"
                     >
-                        {/* 🔒 OVERLAY BLOQUANT SI PAS D'ARÈNE OU NIVEAU TROP BAS */}
                         {isAreneBlocked && <LockedOverlay label={arenaBlockReason} />}
                         
                         <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/5 blur-2xl rounded-full translate-x-1/3 -translate-y-1/3 pointer-events-none"></div>
@@ -202,23 +230,24 @@ const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, t
                         </div>
                     </div>
 
-                    {/* CARTE 3 : RANG */}
-                    <div onClick={() => !isRankLocked && onNavigate('classement')} className="bg-slate-900/60 border border-white/5 p-4 rounded-2xl relative overflow-hidden group cursor-pointer hover:border-yellow-500/30 transition-all duration-300">
-                        {isRankLocked && <LockedOverlay label={`Niv ${LEVEL_REQ_CLASSEMENT}`} />}
-                        <div className={`flex items-center gap-3 ${isRankLocked ? 'blur-sm opacity-50' : ''}`}>
-                            <div className="w-10 h-10 rounded-full bg-yellow-500/10 flex items-center justify-center text-xl border border-yellow-500/20 shrink-0">
-                                {rankPvP.img ? <img src={rankPvP.img} alt="" className="w-6 h-6 object-contain" /> : "🏆"}
-                            </div>
-                            <div className="overflow-hidden">
-                                <h3 className="text-[9px] font-bold uppercase text-slate-500 tracking-widest truncate">Classement</h3>
-                                <p className={`text-sm font-black truncate ${rankPvP.color}`}>{rankPvP.label}</p>
+                    {/* --- CARTE 4 : RANG & EQUIPAGE --- */}
+                    <div className="md:col-span-2 grid grid-cols-2 gap-3">
+                        <div onClick={() => !isRankLocked && onNavigate('classement')} className="bg-slate-900/60 border border-white/5 p-4 rounded-2xl relative overflow-hidden group cursor-pointer hover:border-yellow-500/30 transition-all duration-300">
+                            {isRankLocked && <LockedOverlay label={`Niv ${LEVEL_REQ_CLASSEMENT}`} />}
+                            <div className={`flex items-center gap-3 ${isRankLocked ? 'blur-sm opacity-50' : ''}`}>
+                                <div className="w-10 h-10 rounded-full bg-yellow-500/10 flex items-center justify-center text-xl border border-yellow-500/20 shrink-0">
+                                    {rankPvP.img ? <img src={rankPvP.img} alt="" className="w-6 h-6 object-contain" /> : "🏆"}
+                                </div>
+                                <div className="overflow-hidden">
+                                    <h3 className="text-[9px] font-bold uppercase text-slate-500 tracking-widest truncate">Classement</h3>
+                                    <p className={`text-sm font-black truncate ${rankPvP.color}`}>{rankPvP.label}</p>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* CARTE 4 : SOUTIEN (Placeholder) */}
-                    <div className="bg-slate-900/40 border border-white/5 p-4 rounded-2xl flex items-center justify-center text-slate-600 font-bold text-xs border-dashed">
-                        🚧 Chantier Naval 🚧
+                        <div className="bg-slate-900/40 border border-white/5 p-4 rounded-2xl flex items-center justify-center text-slate-600 font-bold text-xs border-dashed">
+                            🚧 Chantier Naval 🚧
+                        </div>
                     </div>
                 </div>
 
