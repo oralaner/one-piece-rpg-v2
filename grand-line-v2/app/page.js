@@ -496,7 +496,7 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                                 theme={currentTheme} 
                             />
                         )}                        
-                        {activeTab === 'map' && <NavigationMap />}                     
+                        {activeTab === 'map' && <NavigationMap joueur={joueur} />}              
                         {activeTab === 'equipage' && (
                             <TeamTab 
                                 myTeam={game.monEquipage}
