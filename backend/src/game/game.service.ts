@@ -446,10 +446,13 @@ async getDailyQuests(userId: string) {
         this.prisma.joueurs.findUnique({
             where: { id: userId },
             include: {
+                // 👇 AJOUTE CETTE LIGNE ICI 👇
+                localisation: true, 
+                // ---------------------------
+                
                 inventaire: { include: { objets: true } },
                 equipage: true,
                 joueur_titres: { include: { titres_ref: true } },
-                // On inclut l'équipement pour les stats
                 equip_arme: true, equip_tete: true, equip_corps: true, 
                 equip_bottes: true, equip_bague: true, equip_collier: true
             }
