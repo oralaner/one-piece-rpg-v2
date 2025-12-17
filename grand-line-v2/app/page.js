@@ -68,41 +68,67 @@ export default function Home() {
     
     const vitaliteTotale = statsTotales?.vitalite || joueur?.vitalite || 0;
     const pvMaxCalcul = statsTotales?.pv_max_total || 100;
+
+    const isEnMer = joueur?.statut_voyage === 'EN_MER';
+    const loc = joueur?.localisation;
+    const facilities = loc?.facilities || []; // ex: ['PORT', 'SHOP']
     
-    // 🔒 FONCTION DE VERROUILLAGE
+   // 🔒 FONCTION DE VERROUILLAGE DYNAMIQUE
     const isTabLocked = (tabId) => {
         if (!joueur) return true;
-        
-        const chap = joueur.chapitre_actuel;
-        const etape = joueur.etape_actuelle;
-        const niv = joueur.niveau;
 
-        const isBefore = (targetChap, targetStep) => {
-            if (chap < targetChap) return true;
-            if (chap === targetChap && etape < targetStep) return true;
-            return false;
-        };
+        // 1. TABS TOUJOURS ACCESSIBLES (Même en mer, même au niveau 1)
+        const globalTabs = ['tchat', 'classement', 'options', 'admin'];
+        if (globalTabs.includes(tabId)) return false;
 
+        // 2. TABS PERSONNELS (Accessibles partout sauf restriction niveau)
+        // On garde les restrictions de niveau pour ne pas submerger le nouveau joueur
+        if (tabId === 'stats') return joueur.chapitre_actuel < 1 && joueur.niveau < 2;
+        if (tabId === 'inventaire') return false; 
+        if (tabId === 'deck') return joueur.niveau < 5;
+        if (tabId === 'haki') return joueur.niveau < 50;
+        if (tabId === 'map') return false; // La carte est toujours dispo
+
+        // 3. SI ON EST EN MER 🌊
+        // Tout le reste (Commerces, Arène, etc.) est bloqué en mer
+        if (isEnMer) return true;
+
+        // 4. SI ON EST SUR UNE ÎLE 🏝️ (Check des Services)
         switch (tabId) {
-            case 'tchat': 
-            case 'classement': 
+            case 'boutique': 
+                return !facilities.includes('SHOP');
+            case 'marche': 
+                return !facilities.includes('MARCHE'); // Hôtel des ventes
+            case 'casino': 
+                return !facilities.includes('CASINO');
+            case 'arene': 
+                return !facilities.includes('ARENE'); // PvE / PvP local
+            case 'atelier': 
+                return !facilities.includes('FORGE'); // Craft
+            case 'equipage': 
+                // Disons qu'on ne peut gérer/recruter que dans une Taverne
+                return !facilities.includes('TAVERNE'); 
+            default: 
                 return false;
-            case 'stats':      return isBefore(1, 3);
-            case 'inventaire': return isBefore(1, 5);
-            case 'deck':       return isBefore(1, 7);
-            case 'chantier': 
-            case 'map': 
-                return chap < 2; 
-            case 'boutique':   return isBefore(2, 3);
-            case 'marche':     return isBefore(3, 3);
-            case 'casino':     return isBefore(3, 4);
-            case 'arene':      return isBefore(3, 5);
-            case 'atelier':    return isBefore(4, 4);
-            case 'equipage':   return niv < 10;
-            case 'haki':       return niv < 50;
-            default: return false;
         }
     };
+
+    // --- LISTE DES ONGLETS ---
+    const tabs = [
+        { id: 'classement', icon: '🏆', label: 'Top' },
+        { id: 'stats', icon: '📊', label: 'Stats' },
+        { id: 'inventaire', icon: '🎒', label: 'Sac' },
+        { id: 'deck', icon: '📘', label: 'Skills' },
+        { id: 'map', icon: '🧭', label: 'Carte' },
+        { id: 'boutique', icon: '🏪', label: 'Shop', req: 'SHOP' },
+        { id: 'marche', icon: '⚖️', label: 'HDV', req: 'MARCHE' },
+        { id: 'casino', icon: '🎰', label: 'Casino', req: 'CASINO' },
+        { id: 'arene', icon: '⚔️', label: 'Arène', req: 'ARENE' },
+        { id: 'atelier', icon: '🔨', label: 'Craft', req: 'FORGE' },
+        { id: 'equipage', icon: '🍺', label: 'Alliance', req: 'TAVERNE' },
+        { id: 'haki', icon: '👁️', label: 'Haki' },
+        { id: 'tchat', icon: '💬', label: 'Tchat' },
+    ];
 
     // --- BONUS SET ---
     const getActiveSetBonuses = () => {
@@ -170,22 +196,6 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
         );
     }
     
-    // --- LISTE DES ONGLETS (Configuration) ---
-    const tabs = [
-        { id: 'classement', icon: '🏆', label: 'Top' },
-        { id: 'stats', icon: '📊', label: 'Stats' },
-        { id: 'inventaire', icon: '🎒', label: 'Sac' },
-        { id: 'deck', icon: '📘', label: 'Skills' },
-        { id: 'map', icon: '🧭', label: 'Carte' },
-        { id: 'boutique', icon: '🏪', label: 'Shop' },
-        { id: 'marche', icon: '⚖️', label: 'HDV' },
-        { id: 'casino', icon: '🎰', label: 'Casino' },
-        { id: 'arene', icon: '⚔️', label: 'Arène' },
-        { id: 'atelier', icon: '🔨', label: 'Craft' },
-        { id: 'equipage', icon: '🤝', label: 'Alliance' },
-        { id: 'haki', icon: '👁️', label: 'Haki' },
-        { id: 'tchat', icon: '💬', label: 'Tchat' },
-    ];
 
     const calculerChance = (typeRaid) => {
         if (!game.membresEquipage || game.membresEquipage.length === 0) return 0;
@@ -368,10 +378,19 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                 {/* Header PC (Navigation) */}
                 <div className="hidden md:flex flex-wrap gap-3 mb-6 shrink-0">
                     {tabs.map(btn => {
-                        // 🔒 Vérification si l'onglet est bloqué
+                        // 🔒 Vérification
                         const locked = isTabLocked(btn.id);
-
                         
+                        // Petit message d'explication si bloqué
+                        let lockReason = "";
+                        if (locked) {
+                            if (isEnMer) lockReason = "En Mer";
+                            else if (btn.req && !facilities.includes(btn.req)) lockReason = "Pas ici";
+                            else if (btn.id === 'deck') lockReason = "Niv 5";
+                            else if (btn.id === 'haki') lockReason = "Niv 50";
+                            else lockReason = "Bloqué";
+                        }
+
                         return (
                             <button 
                                 key={btn.id} 
@@ -379,15 +398,18 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                                 disabled={locked}
                                 className={`w-20 h-20 lg:w-24 lg:h-24 rounded-2xl border-2 flex flex-col items-center justify-center gap-1 transition-all duration-200 shadow-xl group relative overflow-hidden
                                 ${locked 
-                                    ? 'bg-slate-900 border-slate-800 cursor-not-allowed opacity-40 grayscale' // Style Gris pour bloqué
+                                    ? 'bg-slate-900 border-slate-800 cursor-not-allowed opacity-50 grayscale' // Style Bloqué
                                     : activeTab === btn.id 
                                         ? `${currentTheme.btnPrimary} border-white ring-2 ring-white/20 hover:scale-105 active:scale-95` 
                                         : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-white hover:border-slate-500 hover:scale-105 active:scale-95'
                                 }`}
                             >
-                                {/* Contenu (Cadenas si bloqué, sinon Icône + Texte) */}
+                                {/* Contenu */}
                                 {locked ? (
-                                    <span className="text-3xl opacity-30">🔒</span>
+                                    <>
+                                        <span className="text-2xl opacity-30 grayscale">{btn.icon}</span>
+                                        <span className="text-[9px] font-bold text-red-500/70 uppercase">{lockReason}</span>
+                                    </>
                                 ) : (
                                     <>
                                         <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
