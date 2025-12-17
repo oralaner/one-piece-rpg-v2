@@ -7,7 +7,6 @@ const MAP_IMAGE_URL = "/world_map.jpg";
 const MAP_WIDTH = 3000;  
 const MAP_HEIGHT = 1630; 
 
-// ⚠️ IMPORTANT : Garde ces ratios ou modifie-les si tu changes la taille de l'image
 const RATIO_X = 10; 
 const RATIO_Y = 15; 
 
@@ -16,6 +15,9 @@ const NavigationMap = () => {
     const [mapData, setMapData] = useState(null);
     const [selectedIsland, setSelectedIsland] = useState(null);
     const [travelTimer, setTravelTimer] = useState(null);
+    
+    // ✨ NOUVEAU : État pour la notification interne à la carte
+    const [notification, setNotification] = useState(null); // { message, type: 'success'|'error' }
 
     // --- GESTION DU DRAG ---
     const mapRef = useRef(null);
@@ -23,9 +25,7 @@ const NavigationMap = () => {
     const startPos = useRef({ x: 0, y: 0, left: 0, top: 0 });
 
     const onMouseDown = (e) => {
-        // Si on clique sur un bouton ou une île, on ne lance pas le drag
         if (e.target.closest('button')) return;
-        
         setIsDragging(true);
         startPos.current = { x: e.clientX, y: e.clientY, left: mapRef.current.scrollLeft, top: mapRef.current.scrollTop };
         e.preventDefault(); 
@@ -41,40 +41,36 @@ const NavigationMap = () => {
         mapRef.current.scrollTop = startPos.current.top - dy;
     };
 
-    // 📍 MODE DEBUG : CLICK TO GET COORDS (SEXTANT DU DÉVELOPPEUR)
-    const handleMapClick = (e) => {
-        if (isDragging || e.target.closest('button')) return;
-
-        const rect = e.currentTarget.getBoundingClientRect();
-        
-        // Calcul précis basé sur la taille réelle affichée
-        // On prend en compte le scroll du parent si nécessaire
-        const xPixels = e.clientX - rect.left;
-        const yPixels = e.clientY - rect.top;
-
-        const dbX = Math.round(xPixels / RATIO_X);
-        const dbY = Math.round(yPixels / RATIO_Y);
-
-        alert(`📍 COORDONNÉES POUR SUPABASE :\n\npos_x : ${dbX}\npos_y : ${dbY}`);
+    // Helper pour afficher la notif 3 secondes
+    const showMapNotif = (msg, type = 'success') => {
+        setNotification({ message: msg, type });
+        setTimeout(() => setNotification(null), 4000);
     };
 
-    // Chargement des données
+    // Mode Debug
+    const handleMapClick = (e) => {
+        if (isDragging || e.target.closest('button')) return;
+        // On désactive l'alerte debug pour l'instant pour ne pas gêner, 
+        // décommente si tu as encore besoin de placer des îles.
+        /*
+        const rect = e.currentTarget.getBoundingClientRect();
+        const xPixels = e.clientX - rect.left;
+        const yPixels = e.clientY - rect.top;
+        const dbX = Math.round(xPixels / RATIO_X);
+        const dbY = Math.round(yPixels / RATIO_Y);
+        alert(`📍 COORDONNÉES :\npos_x : ${dbX}\npos_y : ${dbY}`);
+        */
+    };
+
     const fetchMap = async () => {
         try {
             const data = await api.get('/game/map');
             setMapData(data);
             setLoading(false);
             
-            // Centrage initial sur le joueur
-            if (data?.currentLocation && mapRef.current) {
-                // On attend un tick pour que le DOM soit prêt
-                setTimeout(() => {
-                    if (mapRef.current) {
-                        const targetX = (data.currentLocation.pos_x * RATIO_X) - (mapRef.current.clientWidth / 2);
-                        const targetY = (data.currentLocation.pos_y * RATIO_Y) - (mapRef.current.clientHeight / 2);
-                        mapRef.current.scrollTo({ left: targetX, top: targetY, behavior: 'smooth' });
-                    }
-                }, 100);
+            // Centrage initial (une seule fois)
+            if (data?.currentLocation && mapRef.current && !loading) {
+                // On centre seulement si on n'est pas déjà en train de naviguer
             }
         } catch (e) {
             console.error("Erreur chargement map", e);
@@ -88,7 +84,8 @@ const NavigationMap = () => {
                 const status = await api.get('/game/map/status');
                 if (status.status === 'ARRIVED') {
                     fetchMap();
-                    alert(status.message);
+                    // ✨ REMPLACEMENT DU ALERT PAR NOTIF
+                    showMapNotif(status.message, "success");
                 }
             }
         }, 5000);
@@ -114,11 +111,13 @@ const NavigationMap = () => {
             if (res.success) {
                 fetchMap();
                 setSelectedIsland(null);
-                alert(`⚓ Cap sur ${selectedIsland.nom} !`);
+                // ✨ REMPLACEMENT DU ALERT PAR NOTIF
+                showMapNotif(`⚓ Cap sur ${selectedIsland.nom} ! Durée : ${res.duree} min`, "success");
             }
         } catch (e) {
             const serverMessage = e.response?.data?.message || e.message || "Erreur inconnue";
-            alert(`⚠️ Le Capitaine dit : "${serverMessage}"`);
+            // ✨ REMPLACEMENT DU ALERT PAR NOTIF (ERREUR)
+            showMapNotif(serverMessage, "error");
         }
     };
 
@@ -141,7 +140,30 @@ const NavigationMap = () => {
     return (
         <div className="relative w-full h-full bg-slate-900 overflow-hidden rounded-xl border border-slate-700 shadow-2xl group">
             
-            {/* Zone de Scroll (Drag & Drop) */}
+            {/* ✨ ZONE DE NOTIFICATION (POP-UP CARTE) ✨ */}
+            <AnimatePresence>
+                {notification && (
+                    <motion.div 
+                        initial={{ opacity: 0, y: -50, x: "-50%" }}
+                        animate={{ opacity: 1, y: 0, x: "-50%" }}
+                        exit={{ opacity: 0, y: -50, x: "-50%" }}
+                        className={`absolute top-6 left-1/2 z-[100] px-6 py-4 rounded-xl border shadow-[0_10px_40px_rgba(0,0,0,0.5)] backdrop-blur-md flex items-center gap-3 min-w-[300px] justify-center
+                        ${notification.type === 'error' 
+                            ? 'bg-red-900/90 border-red-500 text-red-100' 
+                            : 'bg-slate-900/90 border-yellow-500 text-yellow-100'}`}
+                    >
+                        <span className="text-2xl">{notification.type === 'error' ? '⚠️' : '⛵'}</span>
+                        <div>
+                            <h4 className="font-black uppercase text-sm tracking-widest">
+                                {notification.type === 'error' ? 'Problème' : 'Navigation'}
+                            </h4>
+                            <p className="text-xs font-medium opacity-90">{notification.message}</p>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Zone de Scroll */}
             <div 
                 ref={mapRef}
                 className={`w-full h-full overflow-auto no-scrollbar relative ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
@@ -150,18 +172,16 @@ const NavigationMap = () => {
                 onMouseUp={onMouseUp} 
                 onMouseLeave={onMouseUp}
             >
-                {/* L'IMAGE ET LES POINTS (DIMENSIONS FORCÉES) */}
                 <div 
                     style={{ 
                         width: MAP_WIDTH, 
                         height: MAP_HEIGHT,
-                        minWidth: MAP_WIDTH,   // 👈 EMPÊCHE L'ÉCRASEMENT
-                        minHeight: MAP_HEIGHT, // 👈 EMPÊCHE L'ÉCRASEMENT
+                        minWidth: MAP_WIDTH,   
+                        minHeight: MAP_HEIGHT, 
                         position: 'relative' 
                     }}
                     onClick={handleMapClick} 
                 >
-                    {/* Fond de carte */}
                     <img 
                         src={MAP_IMAGE_URL} 
                         alt="World Map" 
@@ -280,14 +300,14 @@ const NavigationMap = () => {
                                 </div>
                             </div>
                             <div className="text-right text-[10px] text-slate-500 italic max-w-[150px]">
-                                Cliquez sur la carte pour voir les coordonnées (Debug).
+                                Glissez pour explorer le monde.
                             </div>
                         </div>
                     )}
                 </div>
             )}
 
-            {/* MODALE DÉTAILS */}
+            {/* MODALE DÉTAILS ÎLE */}
             <AnimatePresence>
                 {selectedIsland && (
                     <motion.div 

@@ -253,7 +253,7 @@ console.log('🧹 Nettoyage complet des compétences...');
     }
   ];
 
-  for (const bot of bots) {
+for (const bot of bots) {
     // 1. Création du bot
     const newBot = await prisma.joueurs.create({
       data: {
@@ -263,6 +263,9 @@ console.log('🧹 Nettoyage complet des compétences...');
         niveau: bot.niveau,
         faction: bot.faction,
         avatar_url: bot.avatar,
+        
+        // 👇 AJOUT CRUCIAL : On empêche le lien vers une île inexistante
+        localisation_id: null, 
         
         // Stats
         pv_max: bot.pv_max,
@@ -1309,402 +1312,205 @@ const manualLoot = (nom: string, min: number, max: number, proba: number) => ({ 
 // =========================================================
 // 🗺️ 2. DONNÉES DES ÎLES (COMPLETE)
 // =========================================================
-  console.log('🌱 Début du seeding de la Carte Complète...');
+console.log('🌱 Début du seeding de la World Map...');
 
-  const islandsData = [
-    // ---------------------------------------------------------
-    // 🌊 EAST BLUE (Niveaux 1 - 20) | Zone X: 0-90
-    // ---------------------------------------------------------
-    {
-      nom: "Village de Fushia",
-      description: "Le point de départ paisible.",
-      image_url: "https://images.wikia.nocookie.net/onepiece/fr/images/6/69/Village_de_Fushia.png",
-      pos_x: 10, pos_y: 50,
-      ocean: Ocean.EAST_BLUE,
-      type: IslandType.VILLE,
-      niveau_requis: 1,
-      facilities: [Facility.PORT, Facility.TAVERNE],
-      bonusLoots: [manualLoot("Bois", 2, 5, 1.0)]
-    },
-    {
-      nom: "Shells Town",
-      description: "Une ville sous le contrôle strict de la Marine.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/1/1d/Shells_Town_Infobox.png",
-      pos_x: 25, pos_y: 40,
-      ocean: Ocean.EAST_BLUE,
-      type: IslandType.QG_MARINE,
-      niveau_requis: 5,
-      facilities: [Facility.PORT, Facility.ARENE],
-      bonusLoots: [manualLoot("Ferraille", 2, 4, 0.8)]
-    },
-    {
-      nom: "Village d'Orange",
-      description: "Un village qui a été ravagé par des pirates clowns.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/5/53/Orange_Town_Infobox.png",
-      pos_x: 35, pos_y: 60,
-      ocean: Ocean.EAST_BLUE,
-      type: IslandType.VILLE,
-      niveau_requis: 8,
-      facilities: [Facility.PORT, Facility.SHOP],
-      bonusLoots: [manualLoot("Tissu", 1, 3, 0.6)]
-    },
-    {
-      nom: "Village de Sirop",
-      description: "Un village connu pour son chantier naval modeste.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/3/36/Syrup_Village_Infobox.png",
-      pos_x: 45, pos_y: 30,
-      ocean: Ocean.EAST_BLUE,
-      type: IslandType.VILLE,
-      niveau_requis: 10,
-      facilities: [Facility.PORT, Facility.SHOP, Facility.TAVERNE],
-      bonusLoots: [manualLoot("Herbe médicinale", 2, 4, 1.0)]
-    },
-    {
-      nom: "Baratie",
-      description: "Le célèbre navire-restaurant.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/e/ee/Baratie_Infobox.png",
-      pos_x: 60, pos_y: 45,
-      ocean: Ocean.EAST_BLUE,
-      type: IslandType.VILLE,
-      niveau_requis: 12,
-      facilities: [Facility.PORT, Facility.TAVERNE],
-      bonusLoots: [manualLoot("Omelette nourrissante", 1, 1, 0.5)]
-    },
-    {
-      nom: "Arlong Park",
-      description: "Le quartier général des Hommes-Poissons.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/2/23/Arlong_Park_Infobox.png",
-      pos_x: 70, pos_y: 65,
-      ocean: Ocean.EAST_BLUE,
-      type: IslandType.DONJON,
-      niveau_requis: 15,
-      facilities: [Facility.PORT],
-      bonusLoots: [manualLoot("Or", 1, 2, 0.2)]
-    },
-    {
-      nom: "Loguetown",
-      description: "La ville du début et de la fin.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/9/91/Loguetown_Infobox.png",
-      pos_x: 90, pos_y: 50,
-      ocean: Ocean.EAST_BLUE,
-      type: IslandType.VILLE,
-      niveau_requis: 18,
-      facilities: [Facility.PORT, Facility.SHOP, Facility.FORGE, Facility.CASINO, Facility.ARENE, Facility.MARCHE],
-      bonusLoots: []
-    },
+  // 1. NETTOYAGE
+  console.log('🧹 Nettoyage des anciennes îles...');
+  // On détache les joueurs pour éviter les erreurs de clé étrangère
+  await prisma.joueurs.updateMany({ data: { localisation_id: null, trajet_depart_id: null, trajet_arrivee_id: null } });
+  
+  // Suppression des destinations
+  await prisma.destinations.deleteMany({});
 
-    // ---------------------------------------------------------
-    // 🌋 GRAND LINE - PARADIS (Niveaux 20 - 90) | Zone X: 100-190
-    // ---------------------------------------------------------
-    {
-      nom: "Cap des Jumeaux",
-      description: "L'entrée de Grand Line. Une baleine géante y attend.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/6/66/Twin_Cape_Infobox.png",
-      pos_x: 100, pos_y: 50,
-      ocean: Ocean.GRAND_LINE,
-      type: IslandType.SAUVAGE,
-      niveau_requis: 20,
-      facilities: [Facility.PORT],
-      bonusLoots: [manualLoot("Eau de mer", 5, 10, 1.0)]
-    },
-    {
-      nom: "Whiskey Peak",
-      description: "Une île accueillante... pour les chasseurs de primes.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/2/22/Whisky_Peak_Infobox.png",
-      pos_x: 110, pos_y: 30,
-      ocean: Ocean.GRAND_LINE,
-      type: IslandType.VILLE,
-      niveau_requis: 25,
-      facilities: [Facility.PORT, Facility.TAVERNE, Facility.ARENE],
-      bonusLoots: [manualLoot("Poudre à canon", 2, 5, 0.5)]
-    },
-    {
-      nom: "Little Garden",
-      description: "Une île préhistorique figée dans le temps.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/9/98/Little_Garden_Infobox.png",
-      pos_x: 120, pos_y: 60,
-      ocean: Ocean.GRAND_LINE,
-      type: IslandType.SAUVAGE,
-      niveau_requis: 30,
-      facilities: [],
-      bonusLoots: [manualLoot("Viande de Dinosaure", 1, 2, 0.4)]
-    },
-    {
-      nom: "Royaume de Drum",
-      description: "Une île hivernale réputée pour sa médecine.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/6/69/Drum_Island_Infobox.png",
-      pos_x: 130, pos_y: 20,
-      ocean: Ocean.GRAND_LINE,
-      type: IslandType.VILLE,
-      niveau_requis: 35,
-      facilities: [Facility.PORT, Facility.SHOP],
-      bonusLoots: [manualLoot("Herbe médicinale", 5, 10, 1.0)]
-    },
-    {
-      nom: "Alabasta",
-      description: "Un vaste royaume désertique au bord de la guerre civile.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/4/42/Alabasta_Infobox.png",
-      pos_x: 140, pos_y: 50,
-      ocean: Ocean.GRAND_LINE,
-      type: IslandType.VILLE,
-      niveau_requis: 40,
-      facilities: [Facility.PORT, Facility.SHOP, Facility.CASINO, Facility.MARCHE],
-      bonusLoots: [manualLoot("Poudre d'or", 1, 3, 0.3)]
-    },
-    {
-      nom: "Jaya",
-      description: "Une île de non-droit remplie de pirates.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/3/30/Jaya_Infobox.png",
-      pos_x: 150, pos_y: 40,
-      ocean: Ocean.GRAND_LINE,
-      type: IslandType.VILLE,
-      niveau_requis: 45,
-      facilities: [Facility.PORT, Facility.TAVERNE, Facility.ARENE],
-      bonusLoots: [manualLoot("Rhum", 2, 5, 0.8)]
-    },
-    {
-      nom: "Skypiea",
-      description: "L'île céleste dans la Mer Blanche.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/2/29/Skypiea_Infobox.png",
-      pos_x: 150, pos_y: 10, // En haut !
-      ocean: Ocean.GRAND_LINE,
-      type: IslandType.EVENT,
-      niveau_requis: 50,
-      facilities: [Facility.SHOP],
-      bonusLoots: [manualLoot("Dial", 1, 2, 0.5)]
-    },
-    {
-      nom: "Water Seven",
-      description: "La métropole de l'eau et des charpentiers.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/0/07/Water_7_Infobox.png",
-      pos_x: 160, pos_y: 60,
-      ocean: Ocean.GRAND_LINE,
-      type: IslandType.VILLE,
-      niveau_requis: 55,
-      facilities: [Facility.PORT, Facility.FORGE, Facility.SHOP, Facility.MARCHE], // Forge importante
-      bonusLoots: [manualLoot("Bois de teck", 3, 6, 0.8)]
-    },
-    {
-      nom: "Enies Lobby",
-      description: "L'île judiciaire du Gouvernement Mondial.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/7/73/Enies_Lobby_Infobox.png",
-      pos_x: 165, pos_y: 70,
-      ocean: Ocean.GRAND_LINE,
-      type: IslandType.QG_MARINE,
-      niveau_requis: 60,
-      facilities: [Facility.PORT, Facility.ARENE],
-      bonusLoots: [manualLoot("Acier", 2, 4, 0.5)]
-    },
-    {
-      nom: "Thriller Bark",
-      description: "Un navire géant hanté par des ombres.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/8/8f/Thriller_Bark_Infobox.png",
-      pos_x: 175, pos_y: 30,
-      ocean: Ocean.GRAND_LINE,
-      type: IslandType.DONJON,
-      niveau_requis: 70,
-      facilities: [Facility.PORT],
-      bonusLoots: [manualLoot("Sel", 5, 10, 0.9)]
-    },
-    {
-      nom: "Archipel Sabaody",
-      description: "Dernière étape avant le Nouveau Monde.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/6/6f/Sabaody_Archipelago_Infobox.png",
-      pos_x: 190, pos_y: 50,
-      ocean: Ocean.GRAND_LINE,
-      type: IslandType.VILLE,
-      niveau_requis: 80,
-      facilities: [Facility.PORT, Facility.SHOP, Facility.CASINO, Facility.ARENE, Facility.MARCHE, Facility.FORGE],
-      bonusLoots: [manualLoot("Colle", 2, 5, 0.7)]
-    },
+  // =========================================================
+  // 2. DÉFINITION DES ÎLES (COORDONNÉES EXACTES)
+  // =========================================================
+  
+  const ISLANDS = [
+    // --- EAST BLUE ---
+    { nom: "Village de Fushia", x: 266, y: 18, ocean: Ocean.EAST_BLUE, type: IslandType.VILLE, level: 1, facilities: [Facility.PORT, Facility.TAVERNE] },
+    { nom: "Dawn Island", x: 268, y: 19, ocean: Ocean.EAST_BLUE, type: IslandType.SAUVAGE, level: 3, facilities: [] },
+    { nom: "Yotsuba Region", x: 262, y: 11, ocean: Ocean.EAST_BLUE, type: IslandType.SAUVAGE, level: 5, facilities: [] },
+    { nom: "Shells Town", x: 257, y: 15, ocean: Ocean.EAST_BLUE, type: IslandType.QG_MARINE, level: 8, facilities: [Facility.PORT, Facility.ARENE] },
+    { nom: "Tequila Wolf", x: 232, y: 6, ocean: Ocean.EAST_BLUE, type: IslandType.EVENT, level: 10, facilities: [] },
+    { nom: "Island of Rare Animals", x: 229, y: 24, ocean: Ocean.EAST_BLUE, type: IslandType.SAUVAGE, level: 12, facilities: [] },
+    { nom: "Orange Town", x: 234, y: 21, ocean: Ocean.EAST_BLUE, type: IslandType.VILLE, level: 15, facilities: [Facility.SHOP, Facility.PORT] },
+    { nom: "Syrup Village", x: 215, y: 24, ocean: Ocean.EAST_BLUE, type: IslandType.VILLE, level: 18, facilities: [Facility.PORT, Facility.SHOP] },
+    { nom: "Mirror Ball Island", x: 213, y: 17, ocean: Ocean.EAST_BLUE, type: IslandType.EVENT, level: 20, facilities: [Facility.CASINO] },
+    { nom: "Frauce Kingdom", x: 203, y: 11, ocean: Ocean.EAST_BLUE, type: IslandType.VILLE, level: 22, facilities: [] },
+    { nom: "Conomi Islands", x: 189, y: 21, ocean: Ocean.EAST_BLUE, type: IslandType.SAUVAGE, level: 25, facilities: [Facility.PORT] },
+    { nom: "Cozia Island", x: 178, y: 16, ocean: Ocean.EAST_BLUE, type: IslandType.SAUVAGE, level: 28, facilities: [] },
+    { nom: "Loguetown", x: 167, y: 41, ocean: Ocean.EAST_BLUE, type: IslandType.VILLE, level: 30, facilities: [Facility.PORT, Facility.SHOP, Facility.FORGE, Facility.TAVERNE] },
+    { nom: "Oykot Kingdom", x: 202, y: 39, ocean: Ocean.EAST_BLUE, type: IslandType.VILLE, level: 32, facilities: [] },
+    { nom: "Baratie", x: 226, y: 38, ocean: Ocean.EAST_BLUE, type: IslandType.VILLE, level: 35, facilities: [Facility.TAVERNE, Facility.PORT] },
+    { nom: "Sixis Island", x: 258, y: 38, ocean: Ocean.EAST_BLUE, type: IslandType.SAUVAGE, level: 38, facilities: [] },
+    { nom: "Kumate Island", x: 257, y: 27, ocean: Ocean.EAST_BLUE, type: IslandType.SAUVAGE, level: 40, facilities: [] },
+    { nom: "Shimotsuki Village", x: 274, y: 32, ocean: Ocean.EAST_BLUE, type: IslandType.VILLE, level: 42, facilities: [Facility.FORGE] },
 
-    // ---------------------------------------------------------
-    // 🐍 CALM BELT (Niveaux 85 - 100)
-    // ---------------------------------------------------------
-    {
-      nom: "Amazon Lily",
-      description: "L'île des femmes guerrières.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/f/fe/Amazon_Lily_Infobox.png",
-      pos_x: 180, pos_y: 80,
-      ocean: Ocean.GRAND_LINE, // Techniquement Calm Belt, mais groupé
-      type: IslandType.VILLE,
-      niveau_requis: 85,
-      facilities: [Facility.PORT, Facility.ARENE],
-      bonusLoots: []
-    },
-    {
-      nom: "Impel Down",
-      description: "La grande prison sous-marine.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/9/90/Impel_Down_Infobox.png",
-      pos_x: 170, pos_y: 80,
-      ocean: Ocean.GRAND_LINE,
-      type: IslandType.DONJON,
-      niveau_requis: 90,
-      facilities: [Facility.PORT],
-      bonusLoots: [manualLoot("Menottes", 1, 1, 0.2)]
-    },
-    {
-      nom: "Marineford",
-      description: "L'ancien QG de la Marine.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/9/91/Marineford_Infobox.png",
-      pos_x: 180, pos_y: 65,
-      ocean: Ocean.GRAND_LINE,
-      type: IslandType.QG_MARINE,
-      niveau_requis: 100,
-      facilities: [Facility.ARENE],
-      bonusLoots: []
-    },
+    // --- DOUBLONS EAST BLUE (Suffixes ajoutés) ---
+    { nom: "Thriller Bark (East)", x: 175, y: 28, ocean: Ocean.EAST_BLUE, type: IslandType.EVENT, level: 45, facilities: [] },
+    { nom: "Punk Hazard (East)", x: 215, y: 39, ocean: Ocean.EAST_BLUE, type: IslandType.SAUVAGE, level: 50, facilities: [] },
+    { nom: "Zou (East)", x: 246, y: 29, ocean: Ocean.EAST_BLUE, type: IslandType.SAUVAGE, level: 55, facilities: [] },
+    { nom: "Elbaf (East)", x: 285, y: 39, ocean: Ocean.EAST_BLUE, type: IslandType.VILLE, level: 60, facilities: [] },
 
-    // ---------------------------------------------------------
-    // 👑 NOUVEAU MONDE (Niveaux 100 - 200+) | Zone X: 200-300
-    // ---------------------------------------------------------
-    {
-      nom: "Île des Hommes-Poissons",
-      description: "Le paradis sous-marin à 10 000 mètres de profondeur.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/8/87/Fish-Man_Island_Infobox.png",
-      pos_x: 200, pos_y: 50,
-      ocean: Ocean.NEW_WORLD,
-      type: IslandType.VILLE,
-      niveau_requis: 105,
-      facilities: [Facility.PORT, Facility.SHOP, Facility.TAVERNE],
-      bonusLoots: [manualLoot("Corail", 2, 5, 0.8)]
-    },
-    {
-      nom: "Punk Hazard",
-      description: "Une île divisée entre glace et feu.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/0/07/Punk_Hazard_Infobox.png",
-      pos_x: 215, pos_y: 40,
-      ocean: Ocean.NEW_WORLD,
-      type: IslandType.SAUVAGE,
-      niveau_requis: 115,
-      facilities: [Facility.PORT],
-      bonusLoots: [manualLoot("Fruit du Démon Artificiel", 1, 1, 0.05)]
-    },
-    {
-      nom: "Dressrosa",
-      description: "Le pays de l'amour, de la passion et des jouets.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/2/23/Dressrosa_Infobox.png",
-      pos_x: 230, pos_y: 60,
-      ocean: Ocean.NEW_WORLD,
-      type: IslandType.VILLE,
-      niveau_requis: 125,
-      facilities: [Facility.PORT, Facility.ARENE, Facility.CASINO, Facility.SHOP],
-      bonusLoots: [manualLoot("Acier Trempé", 1, 3, 0.5)]
-    },
-    {
-      nom: "Zou",
-      description: "Une île vivante sur le dos d'un éléphant millénaire.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/7/70/Zou_Infobox.png",
-      pos_x: 245, pos_y: 30, // Elle bouge normalement, mais on fixe une pos
-      ocean: Ocean.NEW_WORLD,
-      type: IslandType.SAUVAGE,
-      niveau_requis: 135,
-      facilities: [Facility.PORT],
-      bonusLoots: [manualLoot("Fruit Électrique", 2, 5, 0.6)]
-    },
-    {
-      nom: "Whole Cake Island",
-      description: "L'archipel de la gourmandise.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/3/3d/Whole_Cake_Island_Infobox.png",
-      pos_x: 260, pos_y: 50,
-      ocean: Ocean.NEW_WORLD,
-      type: IslandType.VILLE,
-      niveau_requis: 150,
-      facilities: [Facility.PORT, Facility.SHOP, Facility.FORGE],
-      bonusLoots: [manualLoot("Gâteau Délicieux", 1, 1, 0.5)]
-    },
-    {
-      nom: "Wano Kuni",
-      description: "Le pays des Samouraïs, isolé du monde.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/d/d3/Wano_Country_Infobox.png",
-      pos_x: 275, pos_y: 70,
-      ocean: Ocean.NEW_WORLD,
-      type: IslandType.VILLE,
-      niveau_requis: 170,
-      facilities: [Facility.PORT, Facility.FORGE, Facility.ARENE, Facility.SHOP],
-      bonusLoots: [manualLoot("Granit Marin", 1, 2, 0.4), manualLoot("Sabre de qualité", 1, 1, 0.1)]
-    },
-    {
-      nom: "Elbaf",
-      description: "La terre des fiers guerriers géants.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/6/64/Elbaf_Infobox.png",
-      pos_x: 285, pos_y: 40,
-      ocean: Ocean.NEW_WORLD,
-      type: IslandType.SAUVAGE,
-      niveau_requis: 190,
-      facilities: [Facility.PORT, Facility.ARENE],
-      bonusLoots: [manualLoot("Bois d'Adam", 1, 1, 0.1)]
-    },
-    {
-      nom: "Laugh Tale",
-      description: "L'île finale. Le trésor s'y trouve.",
-      image_url: "https://static.wikia.nocookie.net/onepiece/images/2/29/Laugh_Tale_Infobox.png",
-      pos_x: 300, pos_y: 50,
-      ocean: Ocean.NEW_WORLD,
-      type: IslandType.EVENT,
-      niveau_requis: 250,
-      facilities: [],
-      bonusLoots: [manualLoot("One Piece", 1, 1, 0.001)] // Le rêve !
-    }
+    // --- SOUTH BLUE ---
+    { nom: "Karate Island", x: 275, y: 74, ocean: Ocean.SOUTH_BLUE, type: IslandType.SAUVAGE, level: 40, facilities: [Facility.ARENE] },
+    { nom: "Sorbet Kingdom", x: 256, y: 86, ocean: Ocean.SOUTH_BLUE, type: IslandType.VILLE, level: 42, facilities: [] },
+    { nom: "Torino Kingdom", x: 237, y: 72, ocean: Ocean.SOUTH_BLUE, type: IslandType.SAUVAGE, level: 45, facilities: [Facility.SHOP] },
+    { nom: "Centaurea Kingdom", x: 231, y: 98, ocean: Ocean.SOUTH_BLUE, type: IslandType.VILLE, level: 48, facilities: [] },
+    { nom: "Judo Island", x: 214, y: 96, ocean: Ocean.SOUTH_BLUE, type: IslandType.SAUVAGE, level: 50, facilities: [Facility.ARENE] },
+    { nom: "Baterilla Island", x: 192, y: 98, ocean: Ocean.SOUTH_BLUE, type: IslandType.VILLE, level: 52, facilities: [] },
+    { nom: "Briss Kingdom", x: 178, y: 85, ocean: Ocean.SOUTH_BLUE, type: IslandType.VILLE, level: 55, facilities: [] },
+    
+    // --- CALM BELT ---
+    { nom: "Amazon Lily", x: 256, y: 63, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 60, facilities: [Facility.ARENE] },
+    { nom: "Impel Down", x: 267, y: 63, ocean: Ocean.GRAND_LINE, type: IslandType.DONJON, level: 70, facilities: [] },
+    { nom: "Rusukaina", x: 253, y: 62, ocean: Ocean.GRAND_LINE, type: IslandType.SAUVAGE, level: 65, facilities: [] },
+
+    // --- NORTH BLUE ---
+    { nom: "Deul Kingdom", x: 108, y: 28, ocean: Ocean.NORTH_BLUE, type: IslandType.VILLE, level: 40, facilities: [] },
+    { nom: "Lvneel Kingdom", x: 97, y: 23, ocean: Ocean.NORTH_BLUE, type: IslandType.VILLE, level: 42, facilities: [] },
+    { nom: "Whiteland Kingdom", x: 88, y: 9, ocean: Ocean.NORTH_BLUE, type: IslandType.VILLE, level: 45, facilities: [] },
+    { nom: "Notice Town", x: 67, y: 31, ocean: Ocean.NORTH_BLUE, type: IslandType.VILLE, level: 48, facilities: [] },
+    { nom: "Rakesh", x: 68, y: 23, ocean: Ocean.NORTH_BLUE, type: IslandType.VILLE, level: 50, facilities: [] },
+    { nom: "Minion Island", x: 63, y: 18, ocean: Ocean.NORTH_BLUE, type: IslandType.SAUVAGE, level: 55, facilities: [] },
+    { nom: "Kuen Village", x: 58, y: 13, ocean: Ocean.NORTH_BLUE, type: IslandType.VILLE, level: 58, facilities: [] },
+    { nom: "Rubeck Island", x: 48, y: 17, ocean: Ocean.NORTH_BLUE, type: IslandType.SAUVAGE, level: 60, facilities: [] },
+    { nom: "Spider Miles", x: 55, y: 19, ocean: Ocean.NORTH_BLUE, type: IslandType.VILLE, level: 62, facilities: [Facility.SHOP] },
+    { nom: "Shallow Island", x: 55, y: 23, ocean: Ocean.NORTH_BLUE, type: IslandType.SAUVAGE, level: 65, facilities: [] },
+    { nom: "White City", x: 41, y: 24, ocean: Ocean.NORTH_BLUE, type: IslandType.VILLE, level: 68, facilities: [] },
+    { nom: "Flevance Kingdom", x: 43, y: 23, ocean: Ocean.NORTH_BLUE, type: IslandType.VILLE, level: 70, facilities: [] },
+    { nom: "Downs Island", x: 53, y: 31, ocean: Ocean.NORTH_BLUE, type: IslandType.SAUVAGE, level: 72, facilities: [] },
+
+    // --- WEST BLUE ---
+    { nom: "Kano Country", x: 110, y: 101, ocean: Ocean.WEST_BLUE, type: IslandType.VILLE, level: 60, facilities: [Facility.ARENE] },
+    { nom: "Ballywood Kingdom", x: 113, y: 82, ocean: Ocean.WEST_BLUE, type: IslandType.VILLE, level: 62, facilities: [] },
+    { nom: "God Valley", x: 103, y: 73, ocean: Ocean.WEST_BLUE, type: IslandType.EVENT, level: 100, facilities: [] },
+    { nom: "Ohara", x: 86, y: 87, ocean: Ocean.WEST_BLUE, type: IslandType.EVENT, level: 65, facilities: [Facility.SHOP] },
+    { nom: "Toroa Island", x: 62, y: 85, ocean: Ocean.WEST_BLUE, type: IslandType.SAUVAGE, level: 68, facilities: [] },
+    { nom: "Llisia Kingdom", x: 43, y: 76, ocean: Ocean.WEST_BLUE, type: IslandType.VILLE, level: 70, facilities: [] },
+
+    // --- GRAND LINE (PARADISE) ---
+    { nom: "G-2", x: 288, y: 50, ocean: Ocean.GRAND_LINE, type: IslandType.QG_MARINE, level: 50, facilities: [Facility.PORT] },
+    { nom: "Sabaody Archipelago", x: 288, y: 54, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 80, facilities: [Facility.MARCHE, Facility.SHOP, Facility.CASINO, Facility.PORT] },
+    { nom: "Lulusia Kingdom", x: 279, y: 52, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 55, facilities: [] },
+    { nom: "Marineford", x: 272, y: 58, ocean: Ocean.GRAND_LINE, type: IslandType.QG_MARINE, level: 90, facilities: [Facility.ARENE] },
+    { nom: "Thriller Bark", x: 269, y: 53, ocean: Ocean.GRAND_LINE, type: IslandType.DONJON, level: 60, facilities: [] },
+    { nom: "Karakuri Island", x: 261, y: 50, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 58, facilities: [Facility.FORGE] },
+    { nom: "Enies Lobby", x: 261, y: 58, ocean: Ocean.GRAND_LINE, type: IslandType.QG_MARINE, level: 65, facilities: [] },
+    { nom: "Guanhao", x: 257, y: 59, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 55, facilities: [] },
+    { nom: "Momoiro Island", x: 254, y: 52, ocean: Ocean.GRAND_LINE, type: IslandType.SAUVAGE, level: 60, facilities: [] },
+    { nom: "Water Seven", x: 244, y: 52, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 65, facilities: [Facility.PORT, Facility.FORGE, Facility.SHOP] },
+    { nom: "St. Poplar", x: 243, y: 59, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 62, facilities: [Facility.PORT] },
+    // 🛠️ CORRECTION : Shift Station est un VILLE (pas de type PORT dans le schema)
+    { nom: "Shift Station", x: 239, y: 55, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 60, facilities: [Facility.PORT] },
+    { nom: "Pucci Island", x: 237, y: 53, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 58, facilities: [] },
+    { nom: "San Faldo", x: 235, y: 58, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 58, facilities: [] },
+    { nom: "Banaro Island", x: 237, y: 50, ocean: Ocean.GRAND_LINE, type: IslandType.SAUVAGE, level: 55, facilities: [] },
+    { nom: "Weatheria", x: 223, y: 50, ocean: Ocean.GRAND_LINE, type: IslandType.EVENT, level: 60, facilities: [] },
+    { nom: "Long Ring Long Land", x: 217, y: 53, ocean: Ocean.GRAND_LINE, type: IslandType.SAUVAGE, level: 50, facilities: [Facility.CASINO] },
+    { nom: "Namakura Island", x: 221, y: 59, ocean: Ocean.GRAND_LINE, type: IslandType.SAUVAGE, level: 52, facilities: [] },
+    { nom: "Kenzan Island", x: 216, y: 60, ocean: Ocean.GRAND_LINE, type: IslandType.SAUVAGE, level: 55, facilities: [] },
+    
+    // --- SKY ISLANDS ---
+    { nom: "Angel Island", x: 209, y: 57, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 55, facilities: [] },
+    { nom: "Skypiea", x: 207, y: 54, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 60, facilities: [Facility.SHOP] },
+    { nom: "Upper Yard", x: 205, y: 55, ocean: Ocean.GRAND_LINE, type: IslandType.DONJON, level: 65, facilities: [] },
+    { nom: "Hidden Cloud Village", x: 204, y: 54, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 62, facilities: [] },
+    { nom: "Ukkari Island", x: 204, y: 52, ocean: Ocean.GRAND_LINE, type: IslandType.SAUVAGE, level: 50, facilities: [] },
+
+    // --- SUITE PARADISE ---
+    { nom: "Foolshout Island", x: 199, y: 59, ocean: Ocean.GRAND_LINE, type: IslandType.SAUVAGE, level: 48, facilities: [] },
+    { nom: "Jaya", x: 201, y: 56, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 50, facilities: [Facility.TAVERNE, Facility.ARENE] },
+    { nom: "Alabasta", x: 189, y: 52, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 45, facilities: [Facility.SHOP, Facility.PORT, Facility.CASINO] },
+    { nom: "Nanimonai Island", x: 183, y: 54, ocean: Ocean.GRAND_LINE, type: IslandType.SAUVAGE, level: 42, facilities: [] },
+    { nom: "Drum Island", x: 179, y: 51, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 40, facilities: [Facility.SHOP] },
+    { nom: "Renaisse", x: 177, y: 56, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 42, facilities: [] },
+    { nom: "Kyuka Island", x: 174, y: 53, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 40, facilities: [] },
+    { nom: "Little Garden", x: 169, y: 51, ocean: Ocean.GRAND_LINE, type: IslandType.SAUVAGE, level: 38, facilities: [] },
+    { nom: "Cactus Island", x: 167, y: 54, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 35, facilities: [Facility.TAVERNE] },
+    { nom: "Boin Archipelago", x: 171, y: 60, ocean: Ocean.GRAND_LINE, type: IslandType.SAUVAGE, level: 35, facilities: [] },
+    // 🛠️ CORRECTION : Twin Cape est un EVENT (ou VILLE) car type PORT n'existe pas
+    { nom: "Twin Cape", x: 163, y: 57, ocean: Ocean.GRAND_LINE, type: IslandType.VILLE, level: 32, facilities: [Facility.PORT] },
+    { nom: "Reverse Mountain", x: 153, y: 56, ocean: Ocean.GRAND_LINE, type: IslandType.EVENT, level: 30, facilities: [] },
+
+    // --- NEW WORLD ---
+    { nom: "Loadestar Island", x: 132, y: 56, ocean: Ocean.NEW_WORLD, type: IslandType.EVENT, level: 120, facilities: [] },
+    { nom: "Hachinosu", x: 120, y: 59, ocean: Ocean.NEW_WORLD, type: IslandType.SAUVAGE, level: 110, facilities: [Facility.ARENE] },
+    { nom: "G-14", x: 111, y: 61, ocean: Ocean.NEW_WORLD, type: IslandType.QG_MARINE, level: 105, facilities: [Facility.PORT] },
+    { nom: "Elbaf", x: 113, y: 56, ocean: Ocean.NEW_WORLD, type: IslandType.VILLE, level: 115, facilities: [Facility.FORGE] },
+    { nom: "Winner Island", x: 110, y: 52, ocean: Ocean.NEW_WORLD, type: IslandType.SAUVAGE, level: 108, facilities: [Facility.ARENE] },
+    { nom: "Sphinx Island", x: 111, y: 58, ocean: Ocean.NEW_WORLD, type: IslandType.VILLE, level: 100, facilities: [] },
+    { nom: "Wano Kuni", x: 99, y: 55, ocean: Ocean.NEW_WORLD, type: IslandType.VILLE, level: 120, facilities: [Facility.FORGE, Facility.ARENE, Facility.SHOP] },
+    { nom: "Baltigo", x: 90, y: 62, ocean: Ocean.NEW_WORLD, type: IslandType.SAUVAGE, level: 95, facilities: [] },
+    { nom: "Ballon Terminal", x: 86, y: 53, ocean: Ocean.NEW_WORLD, type: IslandType.EVENT, level: 90, facilities: [] },
+    { nom: "Foodvalten", x: 90, y: 59, ocean: Ocean.NEW_WORLD, type: IslandType.VILLE, level: 92, facilities: [] },
+    { nom: "Germa Kingdom", x: 87, y: 50, ocean: Ocean.NEW_WORLD, type: IslandType.QG_MARINE, level: 98, facilities: [Facility.SHOP] },
+    { nom: "Yukiryu Island", x: 77, y: 50, ocean: Ocean.NEW_WORLD, type: IslandType.SAUVAGE, level: 90, facilities: [] },
+    { nom: "Karai Bari Island", x: 78, y: 56, ocean: Ocean.NEW_WORLD, type: IslandType.VILLE, level: 95, facilities: [Facility.SHOP] },
+    { nom: "Zou", x: 77, y: 61, ocean: Ocean.NEW_WORLD, type: IslandType.SAUVAGE, level: 100, facilities: [] },
+    { nom: "Whole Cake Island", x: 60, y: 52, ocean: Ocean.NEW_WORLD, type: IslandType.VILLE, level: 110, facilities: [Facility.SHOP, Facility.TAVERNE] },
+    { nom: "Broc Coli Island", x: 47, y: 52, ocean: Ocean.NEW_WORLD, type: IslandType.SAUVAGE, level: 88, facilities: [] },
+    { nom: "Prodence Kingdom", x: 40, y: 59, ocean: Ocean.NEW_WORLD, type: IslandType.VILLE, level: 90, facilities: [] },
+    { nom: "Doerena Kingdom", x: 36, y: 55, ocean: Ocean.NEW_WORLD, type: IslandType.VILLE, level: 88, facilities: [] },
+    { nom: "Majiatsuka Kingdom", x: 38, y: 62, ocean: Ocean.NEW_WORLD, type: IslandType.VILLE, level: 85, facilities: [] },
+    { nom: "Mogaro Kingdom", x: 31, y: 51, ocean: Ocean.NEW_WORLD, type: IslandType.VILLE, level: 85, facilities: [] },
+    { nom: "Applenine Island", x: 34, y: 57, ocean: Ocean.NEW_WORLD, type: IslandType.VILLE, level: 82, facilities: [] },
+    { nom: "Dressrosa", x: 27, y: 60, ocean: Ocean.NEW_WORLD, type: IslandType.VILLE, level: 95, facilities: [Facility.ARENE, Facility.SHOP, Facility.CASINO] },
+    { nom: "Green Bit", x: 28, y: 58, ocean: Ocean.NEW_WORLD, type: IslandType.SAUVAGE, level: 92, facilities: [] },
+    { nom: "Punk Hazard", x: 16, y: 60, ocean: Ocean.NEW_WORLD, type: IslandType.SAUVAGE, level: 85, facilities: [] },
+    { nom: "Raijin Island", x: 16, y: 57, ocean: Ocean.NEW_WORLD, type: IslandType.SAUVAGE, level: 82, facilities: [] },
+    { nom: "Risky Red Island", x: 18, y: 55, ocean: Ocean.NEW_WORLD, type: IslandType.SAUVAGE, level: 80, facilities: [] },
+    { nom: "Mystoria Island", x: 14, y: 54, ocean: Ocean.NEW_WORLD, type: IslandType.SAUVAGE, level: 80, facilities: [] },
+    { nom: "G-5", x: 10, y: 60, ocean: Ocean.NEW_WORLD, type: IslandType.QG_MARINE, level: 85, facilities: [Facility.PORT] },
+    { nom: "Fish-Man Island", x: 7, y: 57, ocean: Ocean.NEW_WORLD, type: IslandType.VILLE, level: 80, facilities: [Facility.SHOP, Facility.PORT] },
+    { nom: "New Marineford", x: 8, y: 52, ocean: Ocean.NEW_WORLD, type: IslandType.QG_MARINE, level: 100, facilities: [Facility.ARENE] },
+    { nom: "Mary Geoise", x: 3, y: 52, ocean: Ocean.NEW_WORLD, type: IslandType.VILLE, level: 150, facilities: [] },
   ];
 
-  // =========================================================
-  // 💾 3. INSERTION EN BASE
-  // =========================================================
-  for (const d of islandsData) {
-    // A. Génération des loots
-    const loots = await generateLootsForLevel(d.niveau_requis, d.bonusLoots);
+  console.log(`🗺️ Injection de ${ISLANDS.length} destinations...`);
 
-    // B. Création / Mise à jour
-    const created = await prisma.destinations.upsert({
+  for (const d of ISLANDS) {
+    await prisma.destinations.upsert({
       where: { nom: d.nom },
       update: {
+        pos_x: d.x,
+        pos_y: d.y,
         ocean: d.ocean,
         type: d.type,
+        niveau_requis: d.level, // 🛠️ CORRECTION : champ 'niveau_requis' et non 'level_req'
         facilities: d.facilities,
-        pos_x: d.pos_x,
-        pos_y: d.pos_y,
-        description: d.description,
-        loots_possibles: loots, 
-        niveau_requis: d.niveau_requis,
-        xp_gain: d.niveau_requis * 20,
-        difficulte: d.niveau_requis * 10
       },
       create: {
         nom: d.nom,
-        description: d.description,
-        image_url: d.image_url,
-        pos_x: d.pos_x,
-        pos_y: d.pos_y,
+        pos_x: d.x,
+        pos_y: d.y,
         ocean: d.ocean,
         type: d.type,
-        niveau_requis: d.niveau_requis,
+        niveau_requis: d.level, // 🛠️ CORRECTION : champ 'niveau_requis' et non 'level_req'
         facilities: d.facilities,
-        loots_possibles: loots,
-        difficulte: d.niveau_requis * 10,
-        xp_gain: d.niveau_requis * 20,
+        description: `Une île située dans ${d.ocean}.`,
+        image_url: null
       }
     });
-    console.log(`📍 [${created.ocean}] ${created.nom} - ${created.facilities.length} Infras.`);
   }
 
   // =========================================================
-  // 🚑 4. SÉCURITÉ JOUEURS
+  // 3. AUTO-REPAIR DES JOUEURS
   // =========================================================
-  const fushia = await prisma.destinations.findUnique({ where: { nom: 'Village de Fushia' } });
+  console.log("🚑 Vérification des joueurs perdus...");
+  const fushia = await prisma.destinations.findFirst({ where: { nom: 'Village de Fushia' } });
+  
   if (fushia) {
-      const result = await prisma.joueurs.updateMany({
-          where: { localisation_id: null }, 
-          data: { 
-              localisation_id: fushia.id,
-              statut_voyage: "A_QUAI"
-          }
-      });
-      if (result.count > 0) console.log(`🚑 ${result.count} joueurs rapatriés à Fushia.`);
+    await prisma.joueurs.updateMany({
+        where: { localisation_id: null, statut_voyage: { not: 'EN_MER' } },
+        data: { localisation_id: fushia.id, statut_voyage: 'A_QUAI' }
+    });
   }
 
-  console.log('🏁 Carte V2 générée avec succès !');
+  console.log('✅ Seeding Terminé !');
 }
+
 
 
 
