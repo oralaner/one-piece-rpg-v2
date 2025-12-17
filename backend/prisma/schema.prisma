@@ -170,6 +170,7 @@ model joueurs {
   localisation_id     Int?        @default(1) // Correspond à l'ID dans destinations
   // Ancienne relation gardée pour compatibilité (renommée pour clarté, pointe vers destinations)
   expedition_dest_id  Int?        
+  iles_visitees       Int[]       @default([]) // Liste des IDs des îles explorées
 
   // --- NAVIRE ---
   niveau_navire       Int?        @default(1)

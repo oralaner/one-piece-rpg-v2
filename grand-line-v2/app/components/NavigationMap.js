@@ -358,23 +358,37 @@ const NavigationMap = ({ joueur }) => {
                             <button onClick={() => setSelectedIsland(null)} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white font-bold">✕</button>
                         </div>
 
+                        {/* --- INFOS ÎLE --- */}
                         <div className="grid grid-cols-2 gap-4 mb-6">
+                            {/* NIVEAU */}
                             <div className="bg-black/40 p-3 rounded-xl border border-white/5 flex flex-col items-center">
                                 <span className="text-[10px] uppercase text-slate-500 font-bold tracking-widest mb-1">Niveau Requis</span>
                                 <span className={`text-2xl font-black font-mono ${selectedIsland.niveau_requis > playerLevel ? 'text-red-500' : 'text-green-400'}`}>
                                     {selectedIsland.niveau_requis}
                                 </span>
                             </div>
+
+                            {/* SERVICES (CACHÉS SI NON VISITÉS) */}
                             <div className="bg-black/40 p-3 rounded-xl border border-white/5 flex flex-col items-center">
                                 <span className="text-[10px] uppercase text-slate-500 font-bold tracking-widest mb-1">Services</span>
-                                <div className="flex gap-2 mt-1">
-                                    {selectedIsland.facilities?.map((fac, i) => (
-                                        <div key={i} title={fac} className="bg-white/10 p-1.5 rounded-lg text-white">
-                                            {getFacilityIcon(fac)}
-                                        </div>
-                                    ))}
-                                    {(!selectedIsland.facilities || selectedIsland.facilities.length === 0) && <span className="text-xs text-slate-600">-</span>}
-                                </div>
+                                
+                                {selectedIsland.is_visited ? (
+                                    /* CAS VISITÉ : On affiche les icônes */
+                                    <div className="flex gap-2 mt-1">
+                                        {selectedIsland.facilities?.map((fac, i) => (
+                                            <div key={i} title={fac} className="bg-white/10 p-1.5 rounded-lg text-white">
+                                                {getFacilityIcon(fac)}
+                                            </div>
+                                        ))}
+                                        {(!selectedIsland.facilities || selectedIsland.facilities.length === 0) && <span className="text-xs text-slate-600">-</span>}
+                                    </div>
+                                ) : (
+                                    /* CAS INCONNU : On affiche "Inconnu" */
+                                    <div className="flex flex-col items-center mt-1">
+                                        <span className="text-xl">❓</span>
+                                        <span className="text-[9px] text-slate-500 italic">Non exploré</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
 

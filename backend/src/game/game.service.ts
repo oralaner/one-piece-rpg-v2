@@ -4098,9 +4098,8 @@ async recolterExpedition(dto: { userId: string }) {
   // 🗺️ SYSTÈME DE NAVIGATION V3 (CORRECTIF FINAL)
   // =================================================================
 
-  // 1. RÉCUPÉRER LA CARTE (WORLD MAP)
+ // 1. RÉCUPÉRER LA CARTE (AVEC MASQUAGE)
   async getMapData(userId: string) {
-    // A. Récupération Joueur
     let joueur: any = await this.prisma.joueurs.findUnique({ 
         where: { id: userId },
         include: { localisation: true } 
@@ -4108,42 +4107,62 @@ async recolterExpedition(dto: { userId: string }) {
     
     if (!joueur) throw new BadRequestException("Joueur introuvable");
 
-    // B. AUTO-REPAIR (Si le joueur est buggé dans le néant)
-    // Si loc est null ET qu'il n'est pas censé être en voyage -> On le remet à Fushia (ID 1 par défaut ou recherche)
+    // A. AUTO-REPAIR + AUTO-VISIT (Fushia)
+    // Si la liste est vide (nouveau joueur ou reset), on ajoute Fushia (ID 1) et sa position actuelle
+    let visitedSet = new Set(joueur.iles_visitees || []);
+    let needUpdate = false;
+
+    // Si le joueur est quelque part, il a forcément visité cet endroit
+    if (joueur.localisation_id && !visitedSet.has(joueur.localisation_id)) {
+        visitedSet.add(joueur.localisation_id);
+        needUpdate = true;
+    }
+
+    // Réparation "Perdu en mer"
     if (!joueur.localisation && joueur.statut_voyage !== 'EN_MER') {
-        console.log(`🔧 [MAP] Réparation position joueur ${joueur.pseudo}`);
-        const spawn = await this.prisma.destinations.findFirst({
-            where: { nom: { contains: 'Fushia', mode: 'insensitive' } }
-        });
-        
+        const spawn = await this.prisma.destinations.findFirst({ where: { nom: { contains: 'Fushia' } } });
         if (spawn) {
             await this.prisma.joueurs.update({
                 where: { id: userId },
-                data: { localisation_id: spawn.id, statut_voyage: 'A_QUAI' }
+                data: { 
+                    localisation_id: spawn.id, 
+                    statut_voyage: 'A_QUAI',
+                    iles_visitees: { push: spawn.id } // On ajoute au passage
+                }
             });
-            // On met à jour l'objet local pour l'affichage immédiat
+            // Update locale pour affichage immédiat
             joueur.localisation = spawn;
             joueur.statut_voyage = 'A_QUAI';
+            visitedSet.add(spawn.id);
         }
+    } else if (needUpdate) {
+        // Sauvegarde discrète de la liste mise à jour
+        await this.prisma.joueurs.update({
+            where: { id: userId },
+            data: { iles_visitees: Array.from(visitedSet) as number[] }
+        });
     }
 
-    // C. RÉCUPÉRATION DE TOUTES LES ÎLES (Pas de filtre Océan)
-    // On veut afficher toute la World Map, donc on renvoie tout.
-    const islands = await this.prisma.destinations.findMany({
-        orderBy: { niveau_requis: 'asc' }, // Juste pour l'ordre, pas critique
+    // B. RÉCUPÉRATION ET MASQUAGE
+    const allIslands = await this.prisma.destinations.findMany({
+        orderBy: { niveau_requis: 'asc' },
         select: {
-            id: true,
-            nom: true,
-            pos_x: true,
-            pos_y: true,
-            type: true,
-            niveau_requis: true,
-            ocean: true,
-            description: true,
-            facilities: true
+            id: true, nom: true, pos_x: true, pos_y: true, type: true, 
+            niveau_requis: true, ocean: true, description: true, facilities: true
         }
     });
-    
+
+    // On filtre les données sensibles
+    const mapWithFog = allIslands.map(island => {
+        const isVisited = visitedSet.has(island.id);
+        return {
+            ...island,
+            // Si pas visité -> On cache les services et la description
+            facilities: isVisited ? island.facilities : [], 
+            description: isVisited ? island.description : "Une île mystérieuse. Explorez-la pour découvrir ses secrets.",
+            is_visited: isVisited // Flag pour le Frontend
+        };
+    });
 
     return {
         currentLocation: joueur.localisation, 
@@ -4153,7 +4172,7 @@ async recolterExpedition(dto: { userId: string }) {
             arrivalTime: joueur.trajet_fin,
             departId: joueur.trajet_depart_id
         },
-        map: islands // On renvoie TOUTES les îles
+        map: mapWithFog
     };
   }
 
@@ -4230,37 +4249,24 @@ async recolterExpedition(dto: { userId: string }) {
     };
   }
 
-  // 3. VÉRIFIER L'ARRIVÉE (POLLING)
+ // 3. VÉRIFIER L'ARRIVÉE (ET DÉBLOQUER L'EXPLORATION)
   async checkTravelArrival(userId: string) {
     const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId } });
     
-    // Si pas en mer, rien à faire
-    if (!joueur || joueur.statut_voyage !== 'EN_MER') {
-        return { status: 'A_QUAI', message: "À quai." };
-    }
+    if (!joueur || joueur.statut_voyage !== 'EN_MER') return { status: 'A_QUAI', message: "À quai." };
 
-    // Sécurité : Si en mer mais pas de date ou pas de destination -> Reset
     if (!joueur.trajet_fin || !joueur.trajet_arrivee_id) {
         await this.prisma.joueurs.update({
             where: { id: userId },
-            data: { 
-                statut_voyage: 'A_QUAI', 
-                localisation_id: joueur.trajet_depart_id || 1, // Retour case départ
-                trajet_fin: null 
-            }
+            data: { statut_voyage: 'A_QUAI', localisation_id: joueur.trajet_depart_id || 1, trajet_fin: null }
         });
         return { status: 'A_QUAI', message: "Erreur de navigation. Retour au port." };
     }
 
-    // Est-ce qu'on est arrivé ? (Date actuelle > Date fin)
     if (new Date() > new Date(joueur.trajet_fin)) {
-        
-        const destination = await this.prisma.destinations.findUnique({ 
-            where: { id: joueur.trajet_arrivee_id } 
-        });
+        const destination = await this.prisma.destinations.findUnique({ where: { id: joueur.trajet_arrivee_id } });
 
         if (!destination) {
-             // Destination disparue ? Reset.
              await this.prisma.joueurs.update({
                 where: { id: userId },
                 data: { statut_voyage: 'A_QUAI', localisation_id: joueur.trajet_depart_id || 1 }
@@ -4268,7 +4274,11 @@ async recolterExpedition(dto: { userId: string }) {
             return { status: 'A_QUAI', message: "Cap perdu." };
         }
 
-        // ARRIVÉE RÉUSSIE
+        // ✅ ARRIVÉE RÉUSSIE + MISE À JOUR VISITE
+        // On récupère la liste actuelle pour ne pas écraser, et on ajoute l'ID si pas présent
+        const visitedList = joueur.iles_visitees || [];
+        const newVisitedList = visitedList.includes(destination.id) ? visitedList : [...visitedList, destination.id];
+
         await this.prisma.joueurs.update({
             where: { id: userId },
             data: {
@@ -4276,21 +4286,18 @@ async recolterExpedition(dto: { userId: string }) {
                 localisation_id: destination.id,
                 trajet_fin: null,
                 trajet_depart_id: null,
-                trajet_arrivee_id: null
+                trajet_arrivee_id: null,
+                iles_visitees: newVisitedList // On sauvegarde la découverte
             }
         });
-
-        // Gain XP d'exploration (facultatif)
-        // await this.addXpAndLevelUp(...) 
 
         return { 
             status: 'ARRIVED', 
             destination: destination,
-            message: `⚓ Arrivée à ${destination.nom} !` 
+            message: `⚓ Arrivée à ${destination.nom} ! Exploration terminée.` 
         };
     }
 
-    // Encore en route
     const timeLeft = Math.ceil((new Date(joueur.trajet_fin).getTime() - Date.now()) / 1000);
     return { status: 'EN_MER', timeLeftSeconds: timeLeft, message: "En mer..." };
   }

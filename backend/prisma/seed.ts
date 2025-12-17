@@ -1504,7 +1504,11 @@ console.log('🌱 Début du seeding de la World Map...');
   if (fushia) {
     await prisma.joueurs.updateMany({
         where: { localisation_id: null, statut_voyage: { not: 'EN_MER' } },
-        data: { localisation_id: fushia.id, statut_voyage: 'A_QUAI' }
+        data: { 
+            localisation_id: fushia.id, 
+            statut_voyage: 'A_QUAI',
+            iles_visitees: [fushia.id] // ✅ On lui donne la connaissance de Fushia
+        }
     });
   }
 
