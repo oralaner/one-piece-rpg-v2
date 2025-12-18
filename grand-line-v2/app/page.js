@@ -9,7 +9,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import FactionSelector from './components/FactionSelector';
 import LevelUpModal from './components/LevelUpModal';
 import { api } from "./utils/api";
-import NotificationWidget from "./components/NotificationWidget"; // 👈 NOUVEAU
+import NotificationWidget from "./components/NotificationWidget"; 
 
 
 // Import Visuel
@@ -45,7 +45,7 @@ export default function Home() {
         inventaire, equipement,
         
         levelUpData, setLevelUpData, 
-        isNewPlayer, // ✅ AJOUT CRUCIAL ICI
+        isNewPlayer, 
 
         // Actions Inventaire
         ouvrirModaleVente, confirmerVente, annulerVente, sellModalItem, session, setActiveTab,
@@ -68,6 +68,10 @@ export default function Home() {
     
     const vitaliteTotale = statsTotales?.vitalite || joueur?.vitalite || 0;
     const pvMaxCalcul = statsTotales?.pv_max_total || 100;
+
+    // 🔥 NOUVEAU CALCUL ÉNERGIE (Base 10 + 1 par niveau)
+    const energieMaxCalcul = joueur ? 10 + (joueur.niveau || 1) : 10;
+    const energieActuelle = joueur?.energie_actuelle ?? 0;
 
     const isEnMer = joueur?.statut_voyage === 'EN_MER';
     const loc = joueur?.localisation;
@@ -153,7 +157,7 @@ export default function Home() {
         return bonuses;
     };
     const activeBonuses = getActiveSetBonuses();
-console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", joueur?.faction);
+
     // --- LOGIN & LOADING ---
     if (!game.session) return (
         <main className="flex h-screen flex-col items-center justify-center bg-slate-950 font-sans p-4">
@@ -164,29 +168,24 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
         </main>
     );
 
-    // 1. SI ÇA CHARGE ENCORE -> On affiche le loader
-    // (On utilise game.loading au lieu de !joueur pour être plus précis)
+    // 1. SI ÇA CHARGE ENCORE
     if (game.loading) {
         return <div className="flex h-screen items-center justify-center text-cyan-400 font-black animate-pulse">Chargement...</div>;
     }
 
-    // 2. SI CHARGEMENT FINI MAIS PAS DE JOUEUR -> C'est un nouveau compte !
-    // On affiche le sélecteur de faction
+    // 2. SI NOUVEAU COMPTE
     if (isNewPlayer || !joueur) {
         return (
             <div className="fixed inset-0 bg-slate-950 z-50 flex items-center justify-center">
                 <FactionSelector 
                     userId={game.session.user.id} 
-                    onSelect={() => {
-                        // Petit reload pour repartir sur des bases saines après la création
-                        window.location.reload();
-                    }} 
+                    onSelect={() => window.location.reload()} 
                 />
             </div>
         );
     }
 
-    // 3. SI JOUEUR EXISTE MAIS PAS DE FACTION (Cas rare de backup)
+    // 3. SI PAS DE FACTION
     if (joueur && !joueur.faction) {
         return (
             <FactionSelector 
@@ -220,35 +219,36 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
     // --- RENDER ---
     return (
         <main className={`h-screen w-screen ${currentTheme.appBg} font-sans relative overflow-hidden selection:bg-white/30 flex flex-col md:flex-row`}>
-                        {/* Texture de fond */}
+            {/* Texture de fond */}
             <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] pointer-events-none z-0"></div>
 
             {/* Notifications */}
-                {game.notification && (() => {
-                    const notification = game.notification;
-                    const isNewTitle = notification.data && notification.data.newTitleUnlocked;
-                    
-                    let styleClass = '';
-                    let icon = '';
+            {game.notification && (() => {
+                const notification = game.notification;
+                const isNewTitle = notification.data && notification.data.newTitleUnlocked;
+                
+                let styleClass = '';
+                let icon = '';
 
-                    if (isNewTitle) {
-                        styleClass = 'bg-yellow-900/95 border-yellow-500 text-yellow-100 shadow-[0_0_20px_rgba(255,255,0,0.6)] animate-pulse-slow';
-                        icon = '🏆';
-                    } else if (notification.type === 'error') {
-                        styleClass = 'bg-red-900/95 border-red-500 text-red-100';
-                        icon = '⚠️';
-                    } else {
-                        styleClass = 'bg-emerald-900/95 border-emerald-500 text-emerald-100';
-                        icon = '✅';
-                    }
+                if (isNewTitle) {
+                    styleClass = 'bg-yellow-900/95 border-yellow-500 text-yellow-100 shadow-[0_0_20px_rgba(255,255,0,0.6)] animate-pulse-slow';
+                    icon = '🏆';
+                } else if (notification.type === 'error') {
+                    styleClass = 'bg-red-900/95 border-red-500 text-red-100';
+                    icon = '⚠️';
+                } else {
+                    styleClass = 'bg-emerald-900/95 border-emerald-500 text-emerald-100';
+                    icon = '✅';
+                }
 
-                    return (
-                        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[9999] px-6 py-3 rounded-xl shadow-2xl border backdrop-blur-md font-bold animate-bounce-in flex items-center gap-3 w-11/12 md:w-auto justify-center ${styleClass}`}>
-                            <span>{icon}</span>
-                            <span>{notification.message}</span>
-                        </div>
-                    );
-                })()}              
+                return (
+                    <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[9999] px-6 py-3 rounded-xl shadow-2xl border backdrop-blur-md font-bold animate-bounce-in flex items-center gap-3 w-11/12 md:w-auto justify-center ${styleClass}`}>
+                        <span>{icon}</span>
+                        <span>{notification.message}</span>
+                    </div>
+                );
+            })()}
+
             {/* === COLONNE GAUCHE : PROFIL === */}
             <div className={`md:w-[350px] md:h-full md:shrink-0 p-2 md:p-4 z-10 flex flex-col ${activeTab ? 'hidden md:flex' : 'flex h-full'}`}>
                 <div className={`flex-1 overflow-y-auto custom-scrollbar rounded-3xl p-4 md:p-6 shadow-2xl relative border-2 ${currentTheme.panel} ${currentTheme.border}`}>
@@ -273,13 +273,12 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                             <p className={`text-[10px] md:text-xs font-black uppercase tracking-widest mt-1 ${joueur.faction === 'Pirate' ? 'text-red-500 drop-shadow-red' : 'text-cyan-400 drop-shadow-cyan'}`}>
                                 Niv {joueur.niveau} • {joueur.faction}
                             </p>
-                            {/* 🔥 WIDGET NOTIFICATIONS 🔥 */}
                             <NotificationWidget />
                         </div>
                     </div>
 
                     {/* Barres Progression */}
-                    <div className="space-y-2 mb-4 bg-black/20 p-2 rounded-xl border border-white/5">
+                    <div className="space-y-3 mb-4 bg-black/20 p-2 rounded-xl border border-white/5">
                         
                         {/* SANTÉ */}
                         <div>
@@ -291,6 +290,20 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                                 <div 
                                     className="h-full bg-gradient-to-r from-red-600 to-rose-500 transition-all duration-500" 
                                     style={{ width: `${Math.min(100, (joueur.pv_actuel / pvMaxCalcul) * 100)}%` }}
+                                ></div>
+                            </div>
+                        </div>
+
+                        {/* 🔥 BARRE D'ÉNERGIE (AJOUTÉE) */}
+                        <div>
+                            <div className="flex justify-between text-[11px] font-bold text-slate-400 mb-0.5">
+                                <span>ÉNERGIE</span>
+                                <span className="text-yellow-400 font-mono">{energieActuelle} / {energieMaxCalcul}</span>
+                            </div>
+                            <div className="w-full h-1.5 bg-black/60 rounded-full overflow-hidden border border-slate-700/50">
+                                <div 
+                                    className="h-full bg-gradient-to-r from-yellow-600 to-amber-400 transition-all duration-500" 
+                                    style={{ width: `${Math.min(100, (energieActuelle / energieMaxCalcul) * 100)}%` }}
                                 ></div>
                             </div>
                         </div>
@@ -333,7 +346,8 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                                 </div>
                             ) : (<p className="text-[9px] italic text-slate-600">Aucun bonus de panoplie.</p>)}
                         </div>
-                    {/* Équipement (Grille compacte) */}
+                    
+                    {/* Équipement */}
                         <div className="grid grid-cols-3 gap-1 mb-3 justify-items-center bg-black/20 p-1 rounded-xl border border-white/5"> 
                             <EquipSlot type="Tête" item={equipement.tete} onUnequip={game.desequiperObjet} theme={currentTheme} />
                             <EquipSlot type="Corps" item={equipement.corps} onUnequip={game.desequiperObjet} theme={currentTheme} />
@@ -348,40 +362,32 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                         <span className="text-[10px] font-bold text-yellow-600 ml-1">BERRYS</span>
                     </div>
                     
-                    <button onClick={game.clickActivite} disabled={game.tempsRestant > 0 || game.explorationLoading} className={`w-full py-4 rounded-xl font-black text-lg shadow-xl transition-all transform active:scale-95 flex items-center justify-center gap-2 border border-white/20 relative overflow-hidden group ${(game.tempsRestant > 0 || game.explorationLoading) ? 'bg-slate-800 text-slate-500 cursor-not-allowed border-slate-700' : currentTheme.btnPrimary }`}>
-                        {game.tempsRestant > 0 ? <span className="font-mono text-xl tracking-widest">{formatTemps(game.tempsRestant)}</span> : game.explorationLoading ? <span className="animate-pulse text-sm">...</span> : <><span className="text-xl animate-bounce-slow">⚡</span> EXPLORER</>}
-                    </button>
+                    {/* ❌ BOUTON EXPLORER SUPPRIMÉ ICI */}
                     
-                    {/* Espace vide pour le menu mobile en bas */}
                     <div className="h-20 md:hidden"></div>
                     
                 </div>
                 
-
-                    {/* 🔥 BOUTON ADMIN (Visible seulement si admin) 🔥 */}
-                    {joueur?.role === 'ADMIN' && (
-                        <button 
-                            onClick={() => setActiveTab('ADMIN')}
-                            className={`p-2 rounded-lg font-bold text-[10px] uppercase border transition ${activeTab === 'ADMIN' ? 'bg-red-600 text-white border-red-400' : 'bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40'}`}
-                        >
-                            ADMIN
-                        </button>
-                    )}
+                {/* BOUTON ADMIN */}
+                {joueur?.role === 'ADMIN' && (
+                    <button 
+                        onClick={() => setActiveTab('ADMIN')}
+                        className={`p-2 rounded-lg font-bold text-[10px] uppercase border transition ${activeTab === 'ADMIN' ? 'bg-red-600 text-white border-red-400' : 'bg-red-900/20 text-red-400 border-red-900/50 hover:bg-red-900/40'}`}
+                    >
+                        ADMIN
+                    </button>
+                )}
                 <LogoutButton />
-                {/* 🔥 BOUTON DEBUG POUR DEVELOPPEUR */}
 
             </div>
 
-            {/* === DROITE : ZONE DE JEU (Pleine largeur sur Mobile quand actif) === */}
+            {/* === DROITE : ZONE DE JEU === */}
             <div className={`flex-1 flex flex-col h-full relative z-10 min-w-0 p-2 md:p-4 pl-0 ${!activeTab ? 'hidden md:flex' : 'flex'}`}>
                 
                 {/* Header PC (Navigation) */}
                 <div className="hidden md:flex flex-wrap gap-3 mb-6 shrink-0">
                     {tabs.map(btn => {
-                        // 🔒 Vérification
                         const locked = isTabLocked(btn.id);
-                        
-                        // Petit message d'explication si bloqué
                         let lockReason = "";
                         if (locked) {
                             if (isEnMer) lockReason = "En Mer";
@@ -398,13 +404,12 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                                 disabled={locked}
                                 className={`w-20 h-20 lg:w-24 lg:h-24 rounded-2xl border-2 flex flex-col items-center justify-center gap-1 transition-all duration-200 shadow-xl group relative overflow-hidden
                                 ${locked 
-                                    ? 'bg-slate-900 border-slate-800 cursor-not-allowed opacity-50 grayscale' // Style Bloqué
+                                    ? 'bg-slate-900 border-slate-800 cursor-not-allowed opacity-50 grayscale'
                                     : activeTab === btn.id 
                                         ? `${currentTheme.btnPrimary} border-white ring-2 ring-white/20 hover:scale-105 active:scale-95` 
                                         : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-white hover:border-slate-500 hover:scale-105 active:scale-95'
                                 }`}
                             >
-                                {/* Contenu */}
                                 {locked ? (
                                     <>
                                         <span className="text-2xl opacity-30 grayscale">{btn.icon}</span>
@@ -430,7 +435,6 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                 {/* ZONE DE CONTENU */}
                 <div className={`flex-1 relative overflow-hidden rounded-3xl ${currentTheme.panel} shadow-2xl h-full`}>
                     
-                    {/* --- BOUTON FERMER (CROIX) --- */}
                     {activeTab && (
                         <button 
                             onClick={() => game.setActiveTab(null)}
@@ -443,7 +447,6 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
 
                     <div className="h-full overflow-y-auto custom-scrollbar p-4 md:p-8 pb-24 md:pb-8">
                         
-                        {/* ACCUEIL (DASHBOARD) - Visible si aucun onglet */}
                         {!activeTab && (
                             <HomeTab 
                             joueur={joueur} 
@@ -457,13 +460,11 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                         />
                         )}
                         
-                          {/* 👇 AJOUTE CE BLOC ICI (par exemple juste après 'aventure' ou à la fin de la liste) 👇 */}
                         {activeTab === 'ADMIN' && joueur?.role === 'ADMIN' && (
                             <div className="h-full overflow-y-auto custom-scrollbar p-4">
                                 <AdminTab theme={currentTheme} />
                             </div>
                         )}
-                        {/* 👆 FIN DE L'AJOUT 👆 */}
                           
                         {activeTab === 'inventaire' && (
                             <InventoryTab 
@@ -573,7 +574,9 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                 </div>
             </div>
 
-            {/* === MENU MOBILE FLOTTANT (NEW !) === */}
+            {/* ... (Reste des modales inchangé : Mobile Menu, LevelUp, Reward, Titres, Vente, HDV, Kick, Raid) ... */}
+            {/* Je garde le reste du JSX tel quel car il n'a pas besoin de modification pour cette demande */}
+            
             <div className="md:hidden fixed bottom-6 right-6 z-50">
                 <button 
                     onClick={() => setIsMobileMenuOpen(true)} 
@@ -583,19 +586,15 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                 </button>
             </div>
 
-            {/* OVERLAY DU MENU MOBILE */}
             {isMobileMenuOpen && (
                 <div className="md:hidden fixed inset-0 bg-black/95 z-[60] animate-fadeIn p-6 flex flex-col justify-center backdrop-blur-xl">
                     <button onClick={() => setIsMobileMenuOpen(false)} className="absolute top-6 right-6 text-white text-4xl">✕</button>
                     
                     <h2 className="text-center text-2xl font-pirata text-white mb-8 tracking-widest">NAVIGATION</h2>
                     
-                    {/* Contenu de la grille du menu mobile */}
                     <div className="grid grid-cols-3 gap-4">
                         {tabs.map(btn => {
-                            // 🔒 Vérification
                             const locked = isTabLocked(btn.id);
-
                             return (
                                 <button 
                                     key={btn.id} 
@@ -629,9 +628,6 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                 </div>
             )}
 
-            {/* OVERLAYS GLOBAUX */}
-
-            {/* 🔥 MODALE LEVEL UP (Au dessus de tout) 🔥 */}
             {levelUpData && (
                 <LevelUpModal 
                     newLevel={levelUpData.level} 
@@ -658,7 +654,6 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                 </div>
             )}
 
-            {/* --- MODALE DE VENTE (Marchand NPC) --- */}
             {sellModalItem && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fadeIn">
                     <div className="bg-slate-900 border-4 border-yellow-600 rounded-xl p-6 max-w-sm w-full shadow-[0_0_50px_rgba(234,179,8,0.2)] text-center relative overflow-hidden">
@@ -684,7 +679,6 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                             </div>
                         </div>
 
-                        {/* ✅ SÉLECTEUR DE QUANTITÉ NPC */}
                         <div className="relative z-10 bg-black/40 p-3 rounded-lg mb-4">
                             <p className="text-xs text-slate-400 mb-2 uppercase font-bold">Quantité à vendre</p>
                             <div className="flex items-center justify-center gap-2 mb-2">
@@ -722,7 +716,6 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                 </div>
             )}
 
-            {/* --- MODALE MISE EN VENTE HDV --- */}
             {marketSellItem && (
                 <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/90 backdrop-blur-sm animate-fadeIn">
                     <div className="bg-slate-900 border-4 border-blue-500 rounded-xl p-6 max-w-sm w-full shadow-[0_0_50px_rgba(59,130,246,0.3)] text-center relative">
@@ -744,7 +737,6 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                             </div>
                         </div>
 
-                        {/* ✅ SÉLECTEUR DE QUANTITÉ HDV */}
                         <div className="bg-black/20 p-3 rounded-lg border border-white/5 mb-4">
                             <label className="block text-slate-400 text-[10px] uppercase font-bold mb-1">Quantité à vendre</label>
                             <div className="flex items-center justify-center gap-2">
@@ -791,7 +783,6 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                 </div>
             )}
 
-            {/* --- MODALE EXCLUSION MEMBRE --- */}
             {game.kickTarget && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm animate-fadeIn">
                     <div className="bg-slate-900 border-4 border-red-600 rounded-xl p-6 max-w-sm w-full shadow-[0_0_50px_rgba(220,38,38,0.4)] text-center">
@@ -817,7 +808,6 @@ console.log("🔍 RENDER HOME - Joueur:", joueur ? "OK" : "NULL", "| Faction:", 
                 </div>
             )}
 
-            {/* --- MODALE SÉLECTION RAID --- */}
             {game.showRaidModal && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 backdrop-blur-sm animate-fadeIn p-4 overflow-y-auto">
                     <div className="max-w-5xl w-full p-6 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl">
