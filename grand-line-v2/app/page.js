@@ -12,6 +12,7 @@ import { api } from "./utils/api";
 import NotificationWidget from "./components/NotificationWidget"; 
 
 
+
 // Import Visuel
 import EquipSlot from "./components/EquipSlot";
 
@@ -32,6 +33,7 @@ import DeckTab from "./features/DeckTab";
 import StatsTab from "./features/StatsTab";
 import ArenaTab from "./features/ArenaTab";
 import AdminTab from "./features/AdminTab";
+import EnergyBar from "./components/EnergyBar";
 
 
 
@@ -295,19 +297,14 @@ export default function Home() {
                         </div>
 
                         {/* 🔥 BARRE D'ÉNERGIE (AJOUTÉE) */}
-                        <div>
-                            <div className="flex justify-between text-[11px] font-bold text-slate-400 mb-0.5">
-                                <span>ÉNERGIE</span>
-                                <span className="text-yellow-400 font-mono">{energieActuelle} / {energieMaxCalcul}</span>
-                            </div>
-                            <div className="w-full h-1.5 bg-black/60 rounded-full overflow-hidden border border-slate-700/50">
-                                <div 
-                                    className="h-full bg-gradient-to-r from-yellow-600 to-amber-400 transition-all duration-500" 
-                                    style={{ width: `${Math.min(100, (energieActuelle / energieMaxCalcul) * 100)}%` }}
-                                ></div>
-                            </div>
-                        </div>
 
+                        <div className="py-1">
+                            <EnergyBar 
+                                current={energieActuelle} 
+                                max={energieMaxCalcul} 
+                                lastUpdate={joueur?.last_energie_update} 
+                            />
+                        </div>
                         {/* EXPÉRIENCE */}
                         <div>
                             <div className="flex justify-between text-[11px] font-bold text-slate-400 mb-0.5">

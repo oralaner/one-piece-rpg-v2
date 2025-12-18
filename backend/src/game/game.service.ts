@@ -482,6 +482,9 @@ async getDailyQuests(userId: string) {
             }
         }) as any;
     }
+    if (joueur) {
+        joueur = await this.updateEnergy(joueur);
+    }
 
     if (!joueur) throw new InternalServerErrorException("Joueur introuvable.");
 
@@ -4303,6 +4306,59 @@ async recolterExpedition(dto: { userId: string }) {
 
     const timeLeft = Math.ceil((new Date(joueur.trajet_fin).getTime() - Date.now()) / 1000);
     return { status: 'EN_MER', timeLeftSeconds: timeLeft, message: "En mer..." };
+  }
+
+  // ⚡ MÉTHODE PRIVÉE POUR RÉGÉNÉRER L'ÉNERGIE
+  private async updateEnergy(joueur: any) {
+    const MAX_ENERGIE = 10 + (joueur.niveau || 1); // Règle : 10 + niveau
+    const REGEN_MINUTES = 10; // 1 point toutes les 10 min
+    
+    const now = new Date();
+    const lastUpdate = new Date(joueur.last_energie_update);
+    
+    // Calcul du temps écoulé en minutes
+    const diffMs = now.getTime() - lastUpdate.getTime();
+    const minutesPassees = Math.floor(diffMs / 1000 / 60);
+
+    // Si moins de 10 min sont passées, on ne fait rien (mais on renvoie le joueur tel quel)
+    if (minutesPassees < REGEN_MINUTES) return joueur;
+
+    // Calcul du gain
+    const gain = Math.floor(minutesPassees / REGEN_MINUTES);
+    
+    // On ne dépasse pas le max
+    let nouvelleEnergie = joueur.energie_actuelle + gain;
+    if (nouvelleEnergie > MAX_ENERGIE) nouvelleEnergie = MAX_ENERGIE;
+
+    // Si l'énergie a changé, on met à jour la BDD
+    if (nouvelleEnergie !== joueur.energie_actuelle) {
+        // On "consomme" le temps utilisé pour le gain, mais on garde le "reste" 
+        // pour ne pas perdre les minutes incomplètes.
+        // Ex: 25min écoulées = 2 points gagnés + 5min de reste.
+        // Nouvelle date = Maintenant - (Minutes en trop)
+        const resteModulo = diffMs % (REGEN_MINUTES * 60 * 1000);
+        const newLastUpdate = new Date(now.getTime() - resteModulo);
+
+        const updatedJoueur = await this.prisma.joueurs.update({
+            where: { id: joueur.id },
+            data: { 
+                energie_actuelle: nouvelleEnergie,
+                last_energie_update: newLastUpdate 
+            },
+            // On inclut les relations nécessaires pour la suite
+            include: { 
+                localisation: true,
+                inventaire: { include: { objets: true } },
+                equipage: true,
+                joueur_titres: { include: { titres_ref: true } },
+                equip_arme: true, equip_tete: true, equip_corps: true, 
+                equip_bottes: true, equip_bague: true, equip_collier: true
+            }
+        });
+        return updatedJoueur;
+    }
+
+    return joueur;
   }
 }
 

@@ -1,77 +1,65 @@
 import React, { useState, useEffect } from 'react';
+import { Zap } from 'lucide-react';
 
-const EnergyBar = ({ current = 0, max = 10, lastUpdate }) => {
+const EnergyBar = ({ current, max, lastUpdate }) => {
     const [timeLeft, setTimeLeft] = useState(null);
 
-    // Temps de recharge (1 heure en ms)
-    // Assurez-vous que c'est la même valeur que côté Backend !
-    const REGEN_DELAY = 60 * 60 * 1000; 
-
     useEffect(() => {
-        // 1. Si l'énergie est pleine, on cache le chrono
+        // Si on est déjà au max, pas de timer
         if (current >= max) {
-            setTimeLeft(null); 
+            setTimeLeft(null);
             return;
         }
-        
-        // 2. Si pas de date de dernière update, on ne peut pas calculer
-        if (!lastUpdate) {
-            setTimeLeft("--:--");
-            return;
-        }
-        
-        const calculateTime = () => {
-            const lastTime = new Date(lastUpdate).getTime();
-            const targetTime = lastTime + REGEN_DELAY;
-            const now = new Date().getTime();
-            const diff = targetTime - now;
+
+        const interval = setInterval(() => {
+            const now = new Date();
+            const last = new Date(lastUpdate);
+            const nextTick = new Date(last.getTime() + 10 * 60 * 1000); // +10 minutes
+            
+            const diff = nextTick - now;
 
             if (diff <= 0) {
-                // Le temps est écoulé mais le front n'a pas encore reçu la nouvelle énergie
-                setTimeLeft("Prêt");
+                // Le temps est écoulé, le backend mettra à jour au prochain refresh
+                // En attendant, on affiche 00:00
+                setTimeLeft("Wait..."); 
             } else {
-                // Conversion propre
-                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-                setTimeLeft(`${minutes}:${seconds < 10 ? '0' : ''}${seconds}`);
+                const m = Math.floor(diff / 60000);
+                const s = Math.floor((diff % 60000) / 1000);
+                setTimeLeft(`${m}:${s < 10 ? '0' : ''}${s}`);
             }
-        };
+        }, 1000);
 
-        // Calcul immédiat
-        calculateTime();
-
-        // Mise à jour chaque seconde
-        const timer = setInterval(calculateTime, 1000);
-
-        return () => clearInterval(timer);
+        return () => clearInterval(interval);
     }, [current, max, lastUpdate]);
 
-    // Calcul pourcentage barre
-    const percentage = Math.min(100, Math.max(0, (current / max) * 100));
+    const percent = Math.min(100, (current / max) * 100);
 
     return (
-        <div className="flex flex-col items-end w-48 relative z-20">
-            {/* Barre visuelle */}
-            <div className="relative w-full h-5 bg-slate-900/90 rounded-full border border-slate-600 overflow-hidden shadow-inner">
-                {/* Jauge remplie */}
-                <div 
-                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-500 ease-out shadow-[0_0_15px_#06b6d4]"
-                    style={{ width: `${percentage}%` }}
-                ></div>
-                
-                {/* Texte superposé (ex: 5/10) */}
-                <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] z-10 tracking-widest">
-                    {current} / {max} ⚡
+        <div className="w-full">
+            <div className="flex justify-between items-end mb-0.5">
+                <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                    <Zap size={10} className="text-yellow-400 fill-yellow-400" /> 
+                    ÉNERGIE
+                </span>
+                <div className="flex items-center gap-2">
+                    {timeLeft && (
+                        <span className="text-[9px] font-mono text-slate-500 animate-pulse">
+                            +{timeLeft}
+                        </span>
+                    )}
+                    <span className="text-[10px] font-black text-yellow-400">
+                        {current} / {max}
+                    </span>
                 </div>
             </div>
-
-            {/* --- LE CHRONO EST ICI --- */}
-            {/* Il ne s'affiche que si timeLeft existe (donc énergie < max) */}
-            {timeLeft && (
-                <div className="text-[10px] text-cyan-300 font-mono mt-1 bg-black/40 px-2 py-0.5 rounded border border-cyan-900/30 flex items-center gap-1 animate-pulse">
-                    <span>⏳</span> +1 dans {timeLeft}
-                </div>
-            )}
+            
+            {/* Barre de progression */}
+            <div className="w-full h-1.5 bg-black/60 rounded-full overflow-hidden border border-slate-700/50">
+                <div 
+                    className="h-full bg-gradient-to-r from-yellow-600 to-amber-400 transition-all duration-500 shadow-[0_0_10px_rgba(251,191,36,0.3)]" 
+                    style={{ width: `${percent}%` }}
+                ></div>
+            </div>
         </div>
     );
 };
