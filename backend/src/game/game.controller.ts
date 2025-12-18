@@ -29,6 +29,7 @@ import { ActivityService } from './activity.service';
 class UserIdDto { userId: string; }
 
 
+
 @Controller('game')
 export class GameController {
   constructor(
