@@ -181,7 +181,8 @@ export class ActivityService {
         }
 
         let gainBerrys = BigInt(0);
-        if (config.gain_berrys_base) {
+        // On vérifie que gain_berrys_base existe et est un nombre
+        if (config.gain_berrys_base && !isNaN(Number(config.gain_berrys_base))) {
             const bonus = islandLevel * 10; 
             gainBerrys = BigInt(Math.floor(config.gain_berrys_base + bonus));
         }
