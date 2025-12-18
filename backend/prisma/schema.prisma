@@ -175,6 +175,14 @@ model joueurs {
   // --- NAVIRE ---
   niveau_navire       Int?        @default(1)
   nom_navire          String?     @default("Radeau de Fortune")
+
+  // --- GESTION DES ACTIVITÉS ---
+  activite_actuelle   String?   // ID de l'activité (ex: "PECHE")
+  activite_debut      DateTime? // Date de lancement
+  activite_fin        DateTime? // Date de fin prévue
+  
+  // Stockage JSON pour les cooldowns : { "PECHE": "2023-12-01T14:00:00Z", "MINAGE": ... }
+  cooldowns           Json      @default("{}")
   
   // --- EQUIPAGE / SOCIAL ---
   equipage_id         String?     @db.Uuid

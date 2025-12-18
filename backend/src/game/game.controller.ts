@@ -435,4 +435,36 @@ export class GameController {
   checkTravel(@User() userId: string) {
     return this.gameService.checkTravelArrival(userId);
   }
+
+  // N'oublie pas d'importer ActivityService et de l'ajouter au constructeur !
+import { ActivityService } from './activity.service';
+
+@Controller('game/activities')
+export class GameController { // Ou ActivityController si tu préfères séparer
+  constructor(
+      private readonly gameService: GameService,
+      private readonly activityService: ActivityService // 👈 Injection
+  ) {}
+
+  // 1. Lister
+  @UseGuards(JwtAuthGuard)
+  @Get('/')
+  async getActivities(@Request() req) {
+    return this.activityService.getAvailableActivities(req.user.userId);
+  }
+
+  // 2. Lancer
+  @UseGuards(JwtAuthGuard)
+  @Post('/start')
+  async startActivity(@Request() req, @Body() body: { activityId: string }) {
+    return this.activityService.startActivity(req.user.userId, body.activityId);
+  }
+
+  // 3. Réclamer
+  @UseGuards(JwtAuthGuard)
+  @Post('/claim')
+  async claimActivity(@Request() req) {
+    return this.activityService.claimActivity(req.user.userId);
+  }
+}
 }

@@ -2,6 +2,7 @@ import React from 'react';
 import { getRankInfo } from '../utils/gameUtils';
 import DailyQuestsWidget from './DailyQuestsWidget';
 import EnergyBar from '../components/EnergyBar'; 
+import ActivityWidget from './ActivityWidget'; // 👈 NOUVEL IMPORT
 
 const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, theme, monEquipage, membresEquipage }) => { 
     
@@ -166,9 +167,8 @@ const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, t
                         </div>
                     </div>
 
-                    {/* --- CARTE 2 : NAVIGATION (NOUVEAU) --- */}
+                    {/* --- CARTE 2 : NAVIGATION --- */}
                     <div onClick={() => onNavigate('map')} className="bg-blue-900/20 border border-blue-500/20 p-4 rounded-2xl relative overflow-hidden group cursor-pointer hover:border-blue-400/50 transition-all duration-300 hover:shadow-[0_0_20px_rgba(59,130,246,0.15)]">
-                        {/* Fond décoratif */}
                         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 blur-xl rounded-full translate-x-10 -translate-y-10"></div>
                         <div className="absolute -right-4 -bottom-4 text-7xl opacity-5 group-hover:opacity-15 transition-opacity -rotate-12 text-blue-300">🧭</div>
 
@@ -246,9 +246,19 @@ const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, t
                         </div>
 
                         <div className="bg-slate-900/40 border border-white/5 p-4 rounded-2xl flex items-center justify-center text-slate-600 font-bold text-xs border-dashed">
-                            🚧 Chantier Naval 🚧
+                            🚧 Équipage 🚧
                         </div>
                     </div>
+
+                    {/* 🔥🔥 CARTE 5 : ACTIVITÉS LOCALES (WIDGET) 🔥🔥 */}
+                    <div className="md:col-span-2">
+                        <ActivityWidget 
+                            joueur={joueur} 
+                            // Permet de rafraîchir l'interface (ex: énergie) après une action
+                            onUpdate={() => console.log("Activité terminée")} 
+                        />
+                    </div>
+
                 </div>
 
                 {/* COLONNE DROITE : QUÊTES */}

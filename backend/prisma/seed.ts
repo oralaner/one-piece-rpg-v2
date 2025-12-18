@@ -790,7 +790,17 @@ for (const bot of bots) {
     { nom: "Tissu", image: "tissu.png", rarete: "Rare", prix: "100 000", cat: "Ressource", craftable: "Oui", achetable: "Non", loot: "Oui", util: "Craft", uniq: "non" },
     { nom: "Voile de bateau", image: "voile_de_bateau.png", rarete: "Rare", prix: "100 000", cat: "Ressource", craftable: "Oui", achetable: "Non", loot: "Oui", util: "Craft", uniq: "non" },
     { nom: "Épée du Marine", image: "épée_du_marine.png", rarete: "Rare", prix: "1 000 000", cat: "Équipement", craftable: "Oui", achetable: "Oui", loot: "Non", util: "S'équipe sur le joueur", uniq: "non" },
-  // --- NAVIRES (Doivent correspondre aux noms dans 'navires_ref') ---
+    // --- POISSONS & DÉCHETS (Pour la Pêche) ---
+    { nom: "Sardine", image: "sardine.png", rarete: "Commun", prix: "500", cat: "Consommable", craftable: "Non", achetable: "Oui", loot: "Oui", util: "Soigne +10 PV", uniq: "non" },
+    { nom: "Maquereau", image: "maquereau.png", rarete: "Commun", prix: "1 500", cat: "Consommable", craftable: "Non", achetable: "Oui", loot: "Oui", util: "Soigne +25 PV", uniq: "non" },
+    { nom: "Thon", image: "thon.png", rarete: "Rare", prix: "5 000", cat: "Consommable", craftable: "Non", achetable: "Oui", loot: "Oui", util: "Soigne +100 PV", uniq: "non" },
+    { nom: "Espadon", image: "espadon.png", rarete: "Épique", prix: "25 000", cat: "Consommable", craftable: "Non", achetable: "Non", loot: "Oui", util: "Soigne +500 PV", uniq: "non" },
+    { nom: "Requin", image: "requin.png", rarete: "Légendaire", prix: "100 000", cat: "Ressource", craftable: "Non", achetable: "Non", loot: "Oui", util: "Craft d'armes puissantes", uniq: "non" },
+    { nom: "Roi des Mers (Petit)", image: "roi_des_mers.png", rarete: "Mythique", prix: "1 000 000", cat: "Ressource", craftable: "Non", achetable: "Non", loot: "Oui", util: "Ingrédient légendaire", uniq: "non" },
+
+    { nom: "Botte trouée", image: "botte_trouee.png", rarete: "Commun", prix: "1", cat: "Ressource", craftable: "Non", achetable: "Non", loot: "Oui", util: "Déchet de pêche", uniq: "non" },
+    { nom: "Arête de poisson", image: "arete.png", rarete: "Commun", prix: "1", cat: "Ressource", craftable: "Non", achetable: "Non", loot: "Oui", util: "Déchet", uniq: "non" },
+    // --- NAVIRES (Doivent correspondre aux noms dans 'navires_ref') ---
     { nom: "Radeau de fortune", image: "radeau.png", rarete: "Commun", prix: "0", cat: "Navire", craftable: "Non", achetable: "Non", loot: "Non", util: "Vitesse x1.0", uniq: "oui", stats: { vitesse: 1.0, chance: 0 } },
     { nom: "Canot", image: "canot.png", rarete: "Commun", prix: "5 000", cat: "Navire", craftable: "Non", achetable: "Non", loot: "Non", util: "Vitesse x1.1 | Chance +5%", uniq: "oui", stats: { vitesse: 1.1, chance: 5 } },
     { nom: "Chaloupe", image: "chaloupe.png", rarete: "Commun", prix: "15 000", cat: "Navire", craftable: "Non", achetable: "Non", loot: "Non", util: "Vitesse x1.2 | Chance +10%", uniq: "oui", stats: { vitesse: 1.2, chance: 10 } },
