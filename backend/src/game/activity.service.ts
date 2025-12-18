@@ -65,50 +65,38 @@ export class ActivityService {
   }
 
   // --------------------------------------------------------
-  // 2. LANCER (CORRIGÉ & SÉCURISÉ)
+  // 2. LANCER (CORRECTION : RETRAIT DU BIGINT)
   // --------------------------------------------------------
-async startActivity(userId: string, activityId: string) {
-    console.log(`\n🔴 [START DEBUG] Tentative lancement: ${activityId} pour User: ${userId}`);
-    
+  async startActivity(userId: string, activityId: string) {
+    console.log(`🚀 [START] Lancement activité: ${activityId}`);
     try {
-        // ETAPE 1 : Chargement Joueur
-        const joueur = await this.prisma.joueurs.findUnique({
-            where: { id: userId },
-            include: { localisation: true }
-        });
-        console.log("✅ 1. Joueur trouvé:", joueur ? "OUI" : "NON");
-
+        const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId }, include: { localisation: true } });
+        
         if (!joueur) throw new BadRequestException("Joueur introuvable");
         if (!joueur.localisation) throw new BadRequestException("Position inconnue");
-        if (joueur.activite_actuelle) throw new BadRequestException("Déjà occupé !");
-
-        // ETAPE 2 : Chargement Config
+        if (joueur.activite_actuelle) throw new BadRequestException("Occupé !");
+        
         const config = (ACTIVITIES_CONFIG as any)[activityId];
-        console.log("✅ 2. Config Activité:", config ? config.nom : "INCONNUE");
         if (!config) throw new BadRequestException("Activité inconnue.");
 
-        // ETAPE 3 : Vérification Lieux
         let facilities: string[] = (joueur.localisation.facilities as unknown as string[]) || [];
         if (facilities.length === 0) facilities = ['SAUVAGE'];
         
-        const hasFacility = config.facilities_req.some((f: string) => facilities.includes(f));
-        console.log(`✅ 3. Lieu OK ? ${hasFacility} (Installations: ${facilities.join(', ')})`);
-        
-        if (!hasFacility) throw new BadRequestException("Mauvais endroit.");
+        if (!config.facilities_req.some((f: string) => facilities.includes(f))) throw new BadRequestException("Mauvais endroit.");
+        if (config.faction_req && config.faction_req !== joueur.faction) throw new BadRequestException(`Réservé aux ${config.faction_req}s.`);
 
-        // ETAPE 4 : Vérification Coûts (C'EST SOUVENT ICI QUE ÇA PLANTE AVEC LES BERRYS)
-        const playerBerrys = Number(joueur.berrys || 0); // Conversion BigInt -> Number pour comparer
-        const costBerrys = config.cout_berrys || 0;
+        const cooldowns: any = (joueur.cooldowns as any) || {};
+        if (cooldowns[activityId] && new Date(cooldowns[activityId]) > new Date()) throw new BadRequestException("En récupération.");
+
+        // 🛠️ CORRECTION : Tout en Number (Int)
+        const playerBerrys = Number(joueur.berrys || 0);
+        const costBerrys = Number(config.cout_berrys || 0);
         const currentEnergy = joueur.energie_actuelle || 0;
         const costEnergy = config.energie || 0;
-
-        console.log(`💰 [ECONOMY CHECK] Joueur: ${playerBerrys}฿ / Coût: ${costBerrys}฿`);
-        console.log(`⚡ [ENERGY CHECK] Joueur: ${currentEnergy}⚡ / Coût: ${costEnergy}⚡`);
 
         if (currentEnergy < costEnergy) throw new BadRequestException("Pas assez d'énergie.");
         if (playerBerrys < costBerrys) throw new BadRequestException("Pas assez de Berrys.");
 
-        // ETAPE 5 : Préparation de la mise à jour BDD
         const now = new Date();
         const fin = new Date(now.getTime() + config.duree * 1000);
 
@@ -118,51 +106,31 @@ async startActivity(userId: string, activityId: string) {
             activite_fin: fin
         };
 
-        // Gestion Énergie
         if (costEnergy > 0) {
             updateData.energie_actuelle = { decrement: costEnergy };
         }
         
-        // Gestion Berrys (Le point critique)
         if (costBerrys > 0) {
-            // On s'assure que c'est bien un entier JS transformé en BigInt
-            const bigIntCost = BigInt(Math.floor(costBerrys));
-            console.log(`📉 [PRISMA PREP] Decrement Berrys de: ${bigIntCost.toString()} (Type: ${typeof bigIntCost})`);
-            updateData.berrys = { decrement: bigIntCost };
+            // 🛠️ CORRECTION : On envoie un Int standard, pas un BigInt
+            updateData.berrys = { decrement: Math.floor(costBerrys) };
         }
 
-        // Log de l'objet final (sans faire planter le console.log avec les BigInt)
-        console.log("💾 [PRISMA UPDATE DATA]:", JSON.stringify(updateData, (key, value) =>
-            typeof value === 'bigint' ? value.toString() : value
-        ));
-
-        // ETAPE 6 : Exécution Prisma
         await this.prisma.joueurs.update({
             where: { id: userId },
             data: updateData
         });
 
-        console.log("✅ [SUCCESS] Activité lancée !");
         return { success: true, message: `Début : ${config.nom}`, fin };
 
     } catch (error) {
-        console.error("❌❌❌ [ERREUR CRITIQUE START] ❌❌❌");
-        console.error("Message:", error.message);
-        console.error("Stack:", error.stack);
-        
-        // Si c'est une erreur Prisma spécifique, on essaie de l'afficher mieux
-        if (error.code) {
-            console.error("Prisma Error Code:", error.code);
-            console.error("Prisma Meta:", error.meta);
-        }
-
+        console.error("❌ ERREUR START :", error);
         if (error instanceof BadRequestException) throw error;
-        throw new InternalServerErrorException(error.message || "Erreur interne au lancement");
+        throw new InternalServerErrorException(error.message);
     }
   }
 
   // --------------------------------------------------------
-  // 3. RÉCLAMER (DÉJÀ CORRIGÉ)
+  // 3. RÉCLAMER (CORRECTION : RETRAIT DU BIGINT)
   // --------------------------------------------------------
   async claimActivity(userId: string) {
     try {
@@ -172,11 +140,11 @@ async startActivity(userId: string, activityId: string) {
         });
 
         if (!joueur) throw new BadRequestException("Joueur introuvable");
-        if (!joueur.activite_actuelle) throw new BadRequestException("Aucune activité en cours.");
+        if (!joueur.activite_actuelle) throw new BadRequestException("Aucune activité.");
         
-        if (!joueur.activite_fin) throw new BadRequestException("Erreur de date.");
+        if (!joueur.activite_fin) throw new BadRequestException("Date invalide.");
         const now = new Date();
-        if (now < new Date(joueur.activite_fin)) throw new BadRequestException("Patience, ce n'est pas fini !");
+        if (now < new Date(joueur.activite_fin)) throw new BadRequestException("Patience !");
 
         const actId = joueur.activite_actuelle;
         const config = (ACTIVITIES_CONFIG as any)[actId];
@@ -186,7 +154,7 @@ async startActivity(userId: string, activityId: string) {
                 where: { id: userId },
                 data: { activite_actuelle: null, activite_debut: null, activite_fin: null }
             });
-            throw new BadRequestException("Activité obsolète. Reset.");
+            throw new BadRequestException("Activité reset (obsolète).");
         }
 
         const islandLevel = joueur.localisation?.niveau_requis || 1; 
@@ -202,17 +170,18 @@ async startActivity(userId: string, activityId: string) {
             }
         }
 
-        let gainBerrys = BigInt(0);
+        // 🛠️ CORRECTION : Berrys en Number
+        let gainBerrys = 0;
         if (config.gain_berrys_base) {
             const bonus = islandLevel * 10; 
-            gainBerrys = BigInt(Math.floor(config.gain_berrys_base + bonus));
+            gainBerrys = Math.floor(config.gain_berrys_base + bonus);
         }
         
         const gainXp = config.xp_gain || 0;
 
         // --- UPDATE ---
         let lootMessage: string[] = [];
-        let structuredItems: any[] = []; // 🔥 Pour le RewardModal
+        let structuredItems: any[] = [];
         
         if (itemsGivenNames.length > 0) {
             const itemsDb = await this.prisma.objets.findMany({ where: { nom: { in: itemsGivenNames } } });
@@ -235,12 +204,11 @@ async startActivity(userId: string, activityId: string) {
                 
                 lootMessage.push(`+1 ${item.nom}`);
                 
-                // 🔥 On prépare l'objet pour le RewardModal
                 structuredItems.push({
                     nom: item.nom,
                     quantite: 1,
                     image_url: item.image_url,
-                    rarity: item.rarete // Assure-toi que c'est 'rarete' ou 'rarity' selon ton schema
+                    rarity: item.rarete 
                 });
             }
         }
@@ -257,7 +225,8 @@ async startActivity(userId: string, activityId: string) {
         };
 
         if (gainXp > 0) finalUpdate.xp = { increment: gainXp };
-        if (gainBerrys > BigInt(0)) finalUpdate.berrys = { increment: gainBerrys };
+        // 🛠️ CORRECTION : increment avec un Int classique
+        if (gainBerrys > 0) finalUpdate.berrys = { increment: gainBerrys };
 
         await this.prisma.joueurs.update({
             where: { id: userId },
@@ -265,19 +234,18 @@ async startActivity(userId: string, activityId: string) {
         });
 
         if (gainXp > 0) lootMessage.push(`+${gainXp} XP`);
-        if (gainBerrys > BigInt(0)) lootMessage.push(`+${gainBerrys.toString()} ฿`);
+        if (gainBerrys > 0) lootMessage.push(`+${gainBerrys} ฿`);
         
         console.log("📤 Retour Client (Rewards):", structuredItems);
 
         return { 
             success: true, 
             message: "Activité terminée !", 
-            // 🔥 NOUVEAU FORMAT DE RÉPONSE
             result: {
                 title: "Rapport d'Activité",
                 message: `Vous avez terminé : ${config.nom}`,
                 xp: gainXp,
-                berrys: Number(gainBerrys), // Conversion sécurisée pour le JSON
+                berrys: gainBerrys,
                 items: structuredItems
             },
             cooldownEnds: nextAvailable
