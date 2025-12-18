@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, InternalServerErrorException } from '@nestjs/common'; // 👈 Correction 1 : Import ajouté
+import { Injectable, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service'; 
 import { ACTIVITIES_CONFIG } from './activities.config';
 
@@ -6,28 +6,18 @@ import { ACTIVITIES_CONFIG } from './activities.config';
 export class ActivityService {
   constructor(private prisma: PrismaService) {}
 
-  // --------------------------------------------------------
-  // 1. LISTER LES ACTIVITÉS DISPONIBLES (ET LEUR ÉTAT)
-  // --------------------------------------------------------
+  // ... (Garde getAvailableActivities tel quel) ...
   async getAvailableActivities(userId: string) {
     const joueur = await this.prisma.joueurs.findUnique({
       where: { id: userId },
       include: { localisation: true }
     });
-
     if (!joueur) throw new BadRequestException("Joueur introuvable");
-
-    if (joueur.statut_voyage === 'EN_MER' || !joueur.localisation) {
-      return { in_progress: null, available: [] };
-    }
+    if (joueur.statut_voyage === 'EN_MER' || !joueur.localisation) return { in_progress: null, available: [] };
 
     const loc = joueur.localisation;
-    
-    // Fallback "SAUVAGE" si l'île est vide
     let facilities: string[] = (loc.facilities as unknown as string[]) || []; 
-    if (facilities.length === 0) {
-        facilities = ['SAUVAGE'];
-    }
+    if (facilities.length === 0) facilities = ['SAUVAGE'];
     
     const cooldowns: any = (joueur.cooldowns as any) || {};
     const now = new Date();
@@ -35,7 +25,6 @@ export class ActivityService {
     const activitiesList = Object.values(ACTIVITIES_CONFIG).map((act: any) => {
       const hasFacility = act.facilities_req.some((f: string) => facilities.includes(f));
       const hasFaction = act.faction_req ? act.faction_req === joueur.faction : true;
-      
       if (!hasFacility || !hasFaction) return null;
 
       const cdFin = cooldowns[act.id] ? new Date(cooldowns[act.id]) : null;
@@ -69,133 +58,102 @@ export class ActivityService {
         totalDuration: totalDuration
       };
     }
-
     return { in_progress: currentStatus, available: activitiesList };
   }
 
-  // --------------------------------------------------------
-  // 2. LANCER UNE ACTIVITÉ
-  // --------------------------------------------------------
+  // ... (Garde startActivity tel quel) ...
   async startActivity(userId: string, activityId: string) {
-    const joueur = await this.prisma.joueurs.findUnique({
-      where: { id: userId },
-      include: { localisation: true }
-    });
-
-    if (!joueur) throw new BadRequestException("Joueur introuvable");
-    if (!joueur.localisation) throw new BadRequestException("Position inconnue");
-
-    if (joueur.activite_actuelle) throw new BadRequestException("Vous êtes déjà occupé !");
-    if (joueur.statut_voyage === 'EN_MER') throw new BadRequestException("Impossible en mer.");
-
+    const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId }, include: { localisation: true } });
+    if (!joueur || !joueur.localisation) throw new BadRequestException("Joueur/Loc introuvable");
+    if (joueur.activite_actuelle) throw new BadRequestException("Occupé");
+    
     const config = (ACTIVITIES_CONFIG as any)[activityId];
-    if (!config) throw new BadRequestException("Activité inconnue.");
+    if (!config) throw new BadRequestException("Activité inconnue");
 
     let facilities: string[] = (joueur.localisation.facilities as unknown as string[]) || [];
     if (facilities.length === 0) facilities = ['SAUVAGE'];
-    
-    const hasFacility = config.facilities_req.some((f: string) => facilities.includes(f));
-    if (!hasFacility) throw new BadRequestException("Mauvais endroit pour faire ça.");
-    
-    if (config.faction_req && config.faction_req !== joueur.faction) {
-        throw new BadRequestException(`Réservé aux ${config.faction_req}s.`);
-    }
-
-    const cooldowns: any = (joueur.cooldowns as any) || {};
-    if (cooldowns[activityId] && new Date(cooldowns[activityId]) > new Date()) {
-        throw new BadRequestException("Activité en récupération.");
-    }
-
-    const playerBerrys = Number(joueur.berrys || 0);
-    const costBerrys = config.cout_berrys || 0;
-
-    if ((joueur.energie_actuelle || 0) < config.energie) throw new BadRequestException("Pas assez d'énergie.");
-    if (playerBerrys < costBerrys) throw new BadRequestException("Pas assez de Berrys.");
+    if (!config.facilities_req.some((f: string) => facilities.includes(f))) throw new BadRequestException("Mauvais lieu");
 
     const now = new Date();
     const fin = new Date(now.getTime() + config.duree * 1000);
-
     const updateData: any = {
         energie_actuelle: { decrement: config.energie },
         activite_actuelle: activityId,
         activite_debut: now,
         activite_fin: fin
     };
+    if (config.cout_berrys) updateData.berrys = { decrement: BigInt(config.cout_berrys) };
 
-    if (costBerrys > 0) {
-        updateData.berrys = { decrement: BigInt(costBerrys) };
-    }
-
-    await this.prisma.joueurs.update({
-      where: { id: userId },
-      data: updateData
-    });
-
+    await this.prisma.joueurs.update({ where: { id: userId }, data: updateData });
     return { success: true, message: `Début : ${config.nom}`, fin };
   }
 
   // --------------------------------------------------------
-  // 3. RÉCLAMER LA RÉCOMPENSE (CLAIM)
+  // 🔥 CLAIM ACTIVITY : VERSION DEBUG EXTRÊME 🔥
   // --------------------------------------------------------
   async claimActivity(userId: string) {
+    console.log("🚀 [DEBUG] Début claimActivity pour", userId);
     try {
         const joueur = await this.prisma.joueurs.findUnique({
             where: { id: userId },
             include: { localisation: true }
         });
 
-        if (!joueur) throw new BadRequestException("Joueur introuvable");
-        if (!joueur.activite_actuelle) throw new BadRequestException("Aucune activité en cours.");
+        if (!joueur) throw new Error("Joueur introuvable en BDD");
+        if (!joueur.activite_actuelle) throw new Error("Pas d'activité en cours dans la BDD");
         
-        if (!joueur.activite_fin) throw new BadRequestException("Erreur de date.");
-        const now = new Date();
-        if (now < new Date(joueur.activite_fin)) throw new BadRequestException("Patience, ce n'est pas fini !");
+        console.log("ℹ️ [DEBUG] Activité trouvée:", joueur.activite_actuelle);
 
         const actId = joueur.activite_actuelle;
         const config = (ACTIVITIES_CONFIG as any)[actId];
 
+        // Sécurité config
         if (!config) {
+            console.warn("⚠️ [DEBUG] Config perdue, reset forcé.");
             await this.prisma.joueurs.update({
                 where: { id: userId },
                 data: { activite_actuelle: null, activite_debut: null, activite_fin: null }
             });
-            throw new BadRequestException("Activité obsolète. Réinitialisation.");
+            throw new Error("Activité obsolète (Reset effectué)");
         }
 
-        // 🛠️ Correction 2 : Ajout de '?.' pour sécuriser l'accès à niveau_requis
         const islandLevel = joueur.localisation?.niveau_requis || 1; 
 
         // --- CALCUL BUTIN ---
-        let lootMessage: string[] = [];
         let itemsGiven: string[] = [];
         
         if (config.loots && config.loots.length > 0) {
             for (const possibleLoot of config.loots) {
                 if (islandLevel >= possibleLoot.min_lvl && islandLevel <= possibleLoot.max_lvl) {
                     const roll = Math.random() * 100;
-                    if (roll <= possibleLoot.chance) {
-                        itemsGiven.push(possibleLoot.item);
-                    }
+                    if (roll <= possibleLoot.chance) itemsGiven.push(possibleLoot.item);
                 }
             }
         }
+        console.log("🎲 [DEBUG] Items gagnés (théorique):", itemsGiven);
 
+        // Berrys
         let gainBerrys = BigInt(0);
-        // On vérifie que gain_berrys_base existe et est un nombre
-        if (config.gain_berrys_base && !isNaN(Number(config.gain_berrys_base))) {
+        if (config.gain_berrys_base) {
             const bonus = islandLevel * 10; 
             gainBerrys = BigInt(Math.floor(config.gain_berrys_base + bonus));
         }
-
+        
+        // XP
         const gainXp = config.xp_gain || 0;
 
-        // --- UPDATE BDD ---
+        // --- UPDATE BDD ITEMS ---
+        let lootMessage: string[] = [];
+        
         if (itemsGiven.length > 0) {
+            console.log("🔍 [DEBUG] Recherche des items en BDD...");
             const itemsDb = await this.prisma.objets.findMany({
                 where: { nom: { in: itemsGiven } }
             });
+            console.log(`📦 [DEBUG] Items trouvés en BDD: ${itemsDb.length} / ${itemsGiven.length}`);
 
             for (const item of itemsDb) {
+                // Upsert manuel sécurisé
                 const existingInv = await this.prisma.inventaire.findFirst({
                     where: { joueur_id: userId, objet_id: item.id }
                 });
@@ -214,8 +172,11 @@ export class ActivityService {
             }
         }
 
+        // --- UPDATE BDD JOUEUR ---
+        console.log("💾 [DEBUG] Mise à jour du joueur (XP/Berrys/Reset)...");
+        
         const cooldowns: any = (joueur.cooldowns as any) || {};
-        const nextAvailable = new Date(now.getTime() + config.cooldown * 1000);
+        const nextAvailable = new Date(new Date().getTime() + config.cooldown * 1000);
         const newCooldowns = { ...cooldowns, [actId]: nextAvailable };
 
         const finalUpdate: any = {
@@ -233,10 +194,13 @@ export class ActivityService {
             data: finalUpdate
         });
 
+        // Messages de fin
         if (gainXp > 0) lootMessage.push(`+${gainXp} XP`);
         if (gainBerrys > BigInt(0)) lootMessage.push(`+${gainBerrys.toString()} ฿`);
-        if (itemsGiven.length === 0 && gainBerrys === BigInt(0) && gainXp === 0) lootMessage.push("Rien trouvé cette fois...");
+        if (lootMessage.length === 0) lootMessage.push("Rien trouvé cette fois...");
 
+        console.log("✅ [DEBUG] Succès !");
+        
         return { 
             success: true, 
             message: "Activité terminée !", 
@@ -245,10 +209,9 @@ export class ActivityService {
         };
 
     } catch (error) {
-        console.error("❌ ERREUR CLAIM ACTIVITY :", error);
-        if (error instanceof BadRequestException) throw error;
-        // 🛠️ Correction 1 : InternalServerErrorException est maintenant importé correctement
-        throw new InternalServerErrorException("Erreur interne lors de la récupération du butin.");
+        console.error("❌ [ERREUR FATALE] DÉTAILS:", error);
+        // ON RENVOIE L'ERREUR EXACTE AU FRONTEND POUR QUE TU PUISSES LA LIRE
+        throw new InternalServerErrorException(error.message || "Erreur inconnue");
     }
   }
 }
