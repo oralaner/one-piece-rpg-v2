@@ -5,7 +5,7 @@ export const ACTIVITIES_CONFIG = {
     nom: "Pêche Côtière",
     description: "Lancez votre ligne et attendez que ça morde.",
     emoji: "🎣",
-    facilities_req: ["PORT", "SAUVAGE"],
+    facilities_req: ["PORT", "SAUVAGE", "VILLE", "EVENT"],
     duree: 30, // secondes
     cooldown: 300, // 5 minutes
     energie: 5,
@@ -49,15 +49,15 @@ export const ACTIVITIES_CONFIG = {
     ]
   },
 
-  // --- 🪵 CUEILLETTE ---
-  CUEILLETTE: {
-    id: 'CUEILLETTE',
-    nom: "Cueillette & Coupe",
-    description: "Récoltez des plantes et du bois.",
-    emoji: "🪵",
-    facilities_req: ["SAUVAGE", "VILLE"],
-    duree: 45, 
-    cooldown: 900, // 15 min
+  EXPLORATION: { // (Anciennement CUEILLETTE)
+    id: 'EXPLORATION',
+    nom: "Exploration",
+    description: "Fouillez les environs pour trouver des ressources.",
+    emoji: "🔍", // Loupe au lieu de bois
+    // On autorise partout sauf en pleine mer
+    facilities_req: ["SAUVAGE", "VILLE", "EVENT", "QG_MARINE", "DONJON"],
+    duree: 60, 
+    cooldown: 600, // 10 min
     energie: 5,
     xp_gain: 10,
     loots: [

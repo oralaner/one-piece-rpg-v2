@@ -1,9 +1,0 @@
-{
-  "dependencies": {
-    "@nestjs/jwt": "^11.0.2",
-    "@types/passport-jwt": "^4.0.1",
-    "framer-motion": "^12.23.26",
-    "lucide-react": "^0.561.0",
-    "passport-jwt": "^4.0.1"
-  }
-}

@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma.service'; // Assure-toi que ce chemin est bon !
+import { PrismaService } from '../prisma.service'; // ⚠️ Vérifie si c'est '../prisma.service' ou '../prisma/prisma.service' selon ton dossier
 import { ACTIVITIES_CONFIG } from './activities.config';
 
 @Injectable()
@@ -23,16 +23,22 @@ export class ActivityService {
     }
 
     const loc = joueur.localisation;
-    const facilities = loc.facilities || []; 
+    
+    // 🔥 MODIFICATION : Fallback "SAUVAGE" si l'île est vide
+    // On force le typage en any/string[] pour manipuler le tableau
+    let facilities: string[] = (loc.facilities as unknown as string[]) || []; 
+    if (facilities.length === 0) {
+        facilities = ['SAUVAGE'];
+    }
+    
     const cooldowns: any = (joueur.cooldowns as any) || {};
     const now = new Date();
 
     // On transforme la Config en liste adaptée au Frontend
     const activitiesList = Object.values(ACTIVITIES_CONFIG).map((act: any) => {
       
-      // 🛠️ CORRECTION LIGNE 33 : On force le typage en string[] pour la comparaison
-      const hasFacility = act.facilities_req.some((f: string) => (facilities as string[]).includes(f));
-      
+      // 1. Vérification des prérequis (Lieu & Faction)
+      const hasFacility = act.facilities_req.some((f: string) => facilities.includes(f));
       const hasFaction = act.faction_req ? act.faction_req === joueur.faction : true;
       
       // Si l'activité n'est pas possible ici, on ne l'affiche même pas
@@ -99,10 +105,13 @@ export class ActivityService {
     if (!config) throw new BadRequestException("Activité inconnue.");
 
     // B. Vérifications Prérequis (Lieu, Faction, Cooldown)
-    const facilities = joueur.localisation.facilities || [];
+    // 🔥 MODIFICATION : Fallback "SAUVAGE" ici aussi
+    let facilities: string[] = (joueur.localisation.facilities as unknown as string[]) || [];
+    if (facilities.length === 0) {
+        facilities = ['SAUVAGE'];
+    }
     
-    // 🛠️ CORRECTION LIGNE 101 : Idem, on force le typage en string[]
-    const hasFacility = config.facilities_req.some((f: string) => (facilities as string[]).includes(f));
+    const hasFacility = config.facilities_req.some((f: string) => facilities.includes(f));
     
     if (!hasFacility) throw new BadRequestException("Mauvais endroit pour faire ça.");
     
