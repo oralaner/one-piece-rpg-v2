@@ -6,12 +6,15 @@ import { ACTIVITIES_CONFIG } from './activities.config';
 export class ActivityService {
   constructor(private prisma: PrismaService) {}
 
-  // ... (Garde getAvailableActivities tel quel) ...
+  // --------------------------------------------------------
+  // 1. LISTER
+  // --------------------------------------------------------
   async getAvailableActivities(userId: string) {
     const joueur = await this.prisma.joueurs.findUnique({
       where: { id: userId },
       include: { localisation: true }
     });
+
     if (!joueur) throw new BadRequestException("Joueur introuvable");
     if (joueur.statut_voyage === 'EN_MER' || !joueur.localisation) return { in_progress: null, available: [] };
 
@@ -61,10 +64,12 @@ export class ActivityService {
     return { in_progress: currentStatus, available: activitiesList };
   }
 
-  // ... (Garde startActivity tel quel) ...
+  // --------------------------------------------------------
+  // 2. LANCER
+  // --------------------------------------------------------
   async startActivity(userId: string, activityId: string) {
     const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId }, include: { localisation: true } });
-    if (!joueur || !joueur.localisation) throw new BadRequestException("Joueur/Loc introuvable");
+    if (!joueur || !joueur.localisation) throw new BadRequestException("Joueur introuvable");
     if (joueur.activite_actuelle) throw new BadRequestException("Occupé");
     
     const config = (ACTIVITIES_CONFIG as any)[activityId];
@@ -89,39 +94,37 @@ export class ActivityService {
   }
 
   // --------------------------------------------------------
-  // 🔥 CLAIM ACTIVITY : VERSION DEBUG EXTRÊME 🔥
+  // 3. RÉCLAMER (CORRIGÉ : experience -> xp)
   // --------------------------------------------------------
   async claimActivity(userId: string) {
-    console.log("🚀 [DEBUG] Début claimActivity pour", userId);
     try {
         const joueur = await this.prisma.joueurs.findUnique({
             where: { id: userId },
             include: { localisation: true }
         });
 
-        if (!joueur) throw new Error("Joueur introuvable en BDD");
-        if (!joueur.activite_actuelle) throw new Error("Pas d'activité en cours dans la BDD");
+        if (!joueur) throw new BadRequestException("Joueur introuvable");
+        if (!joueur.activite_actuelle) throw new BadRequestException("Aucune activité en cours.");
         
-        console.log("ℹ️ [DEBUG] Activité trouvée:", joueur.activite_actuelle);
+        if (!joueur.activite_fin) throw new BadRequestException("Erreur de date.");
+        const now = new Date();
+        if (now < new Date(joueur.activite_fin)) throw new BadRequestException("Patience, ce n'est pas fini !");
 
         const actId = joueur.activite_actuelle;
         const config = (ACTIVITIES_CONFIG as any)[actId];
 
-        // Sécurité config
         if (!config) {
-            console.warn("⚠️ [DEBUG] Config perdue, reset forcé.");
             await this.prisma.joueurs.update({
                 where: { id: userId },
                 data: { activite_actuelle: null, activite_debut: null, activite_fin: null }
             });
-            throw new Error("Activité obsolète (Reset effectué)");
+            throw new BadRequestException("Activité obsolète. Reset.");
         }
 
         const islandLevel = joueur.localisation?.niveau_requis || 1; 
 
-        // --- CALCUL BUTIN ---
+        // --- BUTIN ---
         let itemsGiven: string[] = [];
-        
         if (config.loots && config.loots.length > 0) {
             for (const possibleLoot of config.loots) {
                 if (islandLevel >= possibleLoot.min_lvl && islandLevel <= possibleLoot.max_lvl) {
@@ -130,30 +133,22 @@ export class ActivityService {
                 }
             }
         }
-        console.log("🎲 [DEBUG] Items gagnés (théorique):", itemsGiven);
 
-        // Berrys
         let gainBerrys = BigInt(0);
         if (config.gain_berrys_base) {
             const bonus = islandLevel * 10; 
             gainBerrys = BigInt(Math.floor(config.gain_berrys_base + bonus));
         }
         
-        // XP
         const gainXp = config.xp_gain || 0;
 
-        // --- UPDATE BDD ITEMS ---
+        // --- UPDATE ---
         let lootMessage: string[] = [];
         
         if (itemsGiven.length > 0) {
-            console.log("🔍 [DEBUG] Recherche des items en BDD...");
-            const itemsDb = await this.prisma.objets.findMany({
-                where: { nom: { in: itemsGiven } }
-            });
-            console.log(`📦 [DEBUG] Items trouvés en BDD: ${itemsDb.length} / ${itemsGiven.length}`);
-
+            const itemsDb = await this.prisma.objets.findMany({ where: { nom: { in: itemsGiven } } });
+            
             for (const item of itemsDb) {
-                // Upsert manuel sécurisé
                 const existingInv = await this.prisma.inventaire.findFirst({
                     where: { joueur_id: userId, objet_id: item.id }
                 });
@@ -172,9 +167,6 @@ export class ActivityService {
             }
         }
 
-        // --- UPDATE BDD JOUEUR ---
-        console.log("💾 [DEBUG] Mise à jour du joueur (XP/Berrys/Reset)...");
-        
         const cooldowns: any = (joueur.cooldowns as any) || {};
         const nextAvailable = new Date(new Date().getTime() + config.cooldown * 1000);
         const newCooldowns = { ...cooldowns, [actId]: nextAvailable };
@@ -186,7 +178,8 @@ export class ActivityService {
             cooldowns: newCooldowns,
         };
 
-        if (gainXp > 0) finalUpdate.experience = { increment: gainXp };
+        // 👇 C'EST ICI QUE C'ÉTAIT CASSÉ !
+        if (gainXp > 0) finalUpdate.xp = { increment: gainXp }; // ✅ Corrigé : 'xp' au lieu de 'experience'
         if (gainBerrys > BigInt(0)) finalUpdate.berrys = { increment: gainBerrys };
 
         await this.prisma.joueurs.update({
@@ -194,12 +187,9 @@ export class ActivityService {
             data: finalUpdate
         });
 
-        // Messages de fin
         if (gainXp > 0) lootMessage.push(`+${gainXp} XP`);
         if (gainBerrys > BigInt(0)) lootMessage.push(`+${gainBerrys.toString()} ฿`);
         if (lootMessage.length === 0) lootMessage.push("Rien trouvé cette fois...");
-
-        console.log("✅ [DEBUG] Succès !");
         
         return { 
             success: true, 
@@ -209,9 +199,9 @@ export class ActivityService {
         };
 
     } catch (error) {
-        console.error("❌ [ERREUR FATALE] DÉTAILS:", error);
-        // ON RENVOIE L'ERREUR EXACTE AU FRONTEND POUR QUE TU PUISSES LA LIRE
-        throw new InternalServerErrorException(error.message || "Erreur inconnue");
+        console.error("❌ ERREUR CLAIM :", error);
+        if (error instanceof BadRequestException) throw error;
+        throw new InternalServerErrorException(error.message);
     }
   }
 }
