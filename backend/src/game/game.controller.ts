@@ -1,7 +1,9 @@
-import { Controller, Post, Body, Get, Param, UseGuards, ParseUUIDPipe, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, UseGuards, ParseUUIDPipe, Request } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { User } from '../auth/user.decorator';
 import { GameService } from './game.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+
 
 // DTOs imports
 import { EquipItemDto } from './equip-item.dto';
@@ -22,6 +24,7 @@ import { GameGateway } from './game.gateway';
 import { UseItemDto } from './use-item.dto';
 import { OpenChestDto } from './crew-manage.dto'; 
 import { StoryService } from './story.service';
+import { ActivityService } from './activity.service';
 
 class UserIdDto { userId: string; }
 
@@ -31,7 +34,8 @@ export class GameController {
   constructor(
     private readonly gameService: GameService, 
     private readonly gameGateway: GameGateway,
-    private readonly storyService: StoryService 
+    private readonly storyService: StoryService, 
+    private readonly activityService: ActivityService
   ) {}
 
   // -----------------------------------------------------
@@ -436,35 +440,26 @@ export class GameController {
     return this.gameService.checkTravelArrival(userId);
   }
 
-  // N'oublie pas d'importer ActivityService et de l'ajouter au constructeur !
-import { ActivityService } from './activity.service';
 
-@Controller('game/activities')
-export class GameController { // Ou ActivityController si tu préfères séparer
-  constructor(
-      private readonly gameService: GameService,
-      private readonly activityService: ActivityService // 👈 Injection
-  ) {}
-
-  // 1. Lister
-  @UseGuards(JwtAuthGuard)
-  @Get('/')
+@UseGuards(JwtAuthGuard)
+  @Get('activities')
   async getActivities(@Request() req) {
+    // req.user.userId vient du JwtAuthGuard
     return this.activityService.getAvailableActivities(req.user.userId);
   }
 
-  // 2. Lancer
+  // Lancer une activité
   @UseGuards(JwtAuthGuard)
-  @Post('/start')
+  @Post('activities/start')
   async startActivity(@Request() req, @Body() body: { activityId: string }) {
     return this.activityService.startActivity(req.user.userId, body.activityId);
   }
 
-  // 3. Réclamer
+  // Réclamer la récompense
   @UseGuards(JwtAuthGuard)
-  @Post('/claim')
+  @Post('activities/claim')
   async claimActivity(@Request() req) {
     return this.activityService.claimActivity(req.user.userId);
   }
-}
+
 }
