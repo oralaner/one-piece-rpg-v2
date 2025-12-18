@@ -65,36 +65,74 @@ export class ActivityService {
   }
 
   // --------------------------------------------------------
-  // 2. LANCER
+  // 2. LANCER (CORRIGÉ & SÉCURISÉ)
   // --------------------------------------------------------
   async startActivity(userId: string, activityId: string) {
-    const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId }, include: { localisation: true } });
-    if (!joueur || !joueur.localisation) throw new BadRequestException("Joueur introuvable");
-    if (joueur.activite_actuelle) throw new BadRequestException("Occupé");
-    
-    const config = (ACTIVITIES_CONFIG as any)[activityId];
-    if (!config) throw new BadRequestException("Activité inconnue");
+    console.log(`🚀 [DEBUG] Start Activity: ${activityId} pour ${userId}`);
+    try {
+        const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId }, include: { localisation: true } });
+        
+        if (!joueur) throw new BadRequestException("Joueur introuvable");
+        if (!joueur.localisation) throw new BadRequestException("Position inconnue");
+        if (joueur.activite_actuelle) throw new BadRequestException("Vous êtes déjà occupé !");
+        
+        const config = (ACTIVITIES_CONFIG as any)[activityId];
+        if (!config) throw new BadRequestException("Activité inconnue.");
 
-    let facilities: string[] = (joueur.localisation.facilities as unknown as string[]) || [];
-    if (facilities.length === 0) facilities = ['SAUVAGE'];
-    if (!config.facilities_req.some((f: string) => facilities.includes(f))) throw new BadRequestException("Mauvais lieu");
+        let facilities: string[] = (joueur.localisation.facilities as unknown as string[]) || [];
+        if (facilities.length === 0) facilities = ['SAUVAGE'];
+        
+        if (!config.facilities_req.some((f: string) => facilities.includes(f))) throw new BadRequestException("Mauvais endroit.");
+        if (config.faction_req && config.faction_req !== joueur.faction) throw new BadRequestException(`Réservé aux ${config.faction_req}s.`);
 
-    const now = new Date();
-    const fin = new Date(now.getTime() + config.duree * 1000);
-    const updateData: any = {
-        energie_actuelle: { decrement: config.energie },
-        activite_actuelle: activityId,
-        activite_debut: now,
-        activite_fin: fin
-    };
-    if (config.cout_berrys) updateData.berrys = { decrement: BigInt(config.cout_berrys) };
+        const cooldowns: any = (joueur.cooldowns as any) || {};
+        if (cooldowns[activityId] && new Date(cooldowns[activityId]) > new Date()) throw new BadRequestException("Activité en récupération.");
 
-    await this.prisma.joueurs.update({ where: { id: userId }, data: updateData });
-    return { success: true, message: `Début : ${config.nom}`, fin };
+        const playerBerrys = Number(joueur.berrys || 0);
+        const costBerrys = config.cout_berrys || 0;
+        const costEnergy = config.energie || 0;
+
+        if ((joueur.energie_actuelle || 0) < costEnergy) throw new BadRequestException("Pas assez d'énergie.");
+        if (playerBerrys < costBerrys) throw new BadRequestException("Pas assez de Berrys.");
+
+        const now = new Date();
+        const fin = new Date(now.getTime() + config.duree * 1000);
+
+        // Construction dynamique de l'update pour éviter les erreurs Prisma (ex: decrement 0)
+        const updateData: any = {
+            activite_actuelle: activityId,
+            activite_debut: now,
+            activite_fin: fin
+        };
+
+        // On ne décrémente que si > 0
+        if (costEnergy > 0) {
+            updateData.energie_actuelle = { decrement: costEnergy };
+        }
+        
+        if (costBerrys > 0) {
+            updateData.berrys = { decrement: BigInt(costBerrys) };
+        }
+
+        console.log("💾 [DEBUG] Update Joueur Data:", updateData);
+
+        await this.prisma.joueurs.update({
+            where: { id: userId },
+            data: updateData
+        });
+
+        console.log("✅ [DEBUG] Activité lancée avec succès");
+        return { success: true, message: `Début : ${config.nom}`, fin };
+
+    } catch (error) {
+        console.error("❌ ERREUR START ACTIVITY :", error);
+        if (error instanceof BadRequestException) throw error;
+        throw new InternalServerErrorException(error.message || "Erreur lancement activité");
+    }
   }
 
   // --------------------------------------------------------
-  // 3. RÉCLAMER (CORRIGÉ : experience -> xp)
+  // 3. RÉCLAMER (DÉJÀ CORRIGÉ)
   // --------------------------------------------------------
   async claimActivity(userId: string) {
     try {
@@ -163,7 +201,10 @@ export class ActivityService {
                         data: { joueur_id: userId, objet_id: item.id, quantite: 1 }
                     });
                 }
-                lootMessage.push(`+1 ${item.nom}`);
+                // 🔥 LOG : On vérifie que le message est bien ajouté
+                const msg = `+1 ${item.nom}`;
+                console.log("🎁 Ajout loot msg:", msg);
+                lootMessage.push(msg);
             }
         }
 
@@ -178,8 +219,7 @@ export class ActivityService {
             cooldowns: newCooldowns,
         };
 
-        // 👇 C'EST ICI QUE C'ÉTAIT CASSÉ !
-        if (gainXp > 0) finalUpdate.xp = { increment: gainXp }; // ✅ Corrigé : 'xp' au lieu de 'experience'
+        if (gainXp > 0) finalUpdate.xp = { increment: gainXp };
         if (gainBerrys > BigInt(0)) finalUpdate.berrys = { increment: gainBerrys };
 
         await this.prisma.joueurs.update({
@@ -191,6 +231,8 @@ export class ActivityService {
         if (gainBerrys > BigInt(0)) lootMessage.push(`+${gainBerrys.toString()} ฿`);
         if (lootMessage.length === 0) lootMessage.push("Rien trouvé cette fois...");
         
+        console.log("📤 Retour Client:", lootMessage);
+
         return { 
             success: true, 
             message: "Activité terminée !", 
