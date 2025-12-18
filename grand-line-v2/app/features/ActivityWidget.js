@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, Zap, Coins, CheckCircle, Lock } from 'lucide-react';
+import { Clock, Zap, Coins, CheckCircle } from 'lucide-react';
+import RewardModal from '../components/RewardModal'; // 👈 IMPORT DU COMPOSANT
 
 const ActivityWidget = ({ joueur, onUpdate }) => {
     const [activities, setActivities] = useState([]);
@@ -9,7 +10,8 @@ const ActivityWidget = ({ joueur, onUpdate }) => {
     const [loading, setLoading] = useState(true);
     const [claiming, setClaiming] = useState(false);
     
-    const [rewards, setRewards] = useState(null); 
+    // On stocke l'objet résultat complet ici
+    const [rewardResult, setRewardResult] = useState(null); 
 
     // --- 1. CHARGEMENT ---
     const fetchActivities = async () => {
@@ -70,17 +72,26 @@ const ActivityWidget = ({ joueur, onUpdate }) => {
     };
 
     const handleClaim = async () => {
-        // Sécurité anti-spam clic
         if (claiming) return;
 
         try {
             setClaiming(true);
-            console.log("🖱️ Clic détecté sur Récupérer !"); // Debug visuel console
-
             const res = await api.post('/game/activities/claim');
             
-            console.log("✅ Récompense reçue :", res);
-            setRewards(res.loots);
+            // ✅ ON UTILISE LES DONNÉES STRUCTURÉES DU BACKEND
+            if (res.result) {
+                setRewardResult(res.result);
+            } else {
+                // Fallback si l'ancien backend est encore en cache
+                setRewardResult({
+                    title: "Activité Terminée",
+                    message: "Récompenses récupérées !",
+                    items: [], 
+                    xp: 0, 
+                    berrys: 0
+                });
+            }
+
             await fetchActivities();
             if(onUpdate) onUpdate();
         } catch (e) {
@@ -109,7 +120,7 @@ const ActivityWidget = ({ joueur, onUpdate }) => {
                 <h3 className="text-sm font-black uppercase text-slate-300 tracking-widest">Activités Locales</h3>
             </div>
 
-            {/* --- ZONE ACTIVITÉ EN COURS --- */}
+            {/* --- ACTIVITÉ EN COURS --- */}
             <AnimatePresence>
                 {currentActivity && (
                     <motion.div 
@@ -118,7 +129,6 @@ const ActivityWidget = ({ joueur, onUpdate }) => {
                         exit={{ height: 0, opacity: 0 }}
                         className="mb-6 bg-slate-800/80 border border-blue-500/30 rounded-xl p-4 shadow-lg relative overflow-hidden"
                     >
-                        {/* 🛠️ CORRECTION 1 : pointer-events-none sur le fond */}
                         <div className="absolute inset-0 bg-blue-500/5 animate-pulse pointer-events-none"></div>
 
                         <div className="relative z-10 flex justify-between items-center mb-2">
@@ -140,7 +150,6 @@ const ActivityWidget = ({ joueur, onUpdate }) => {
                         </div>
 
                         {currentActivity.isFinished ? (
-                            // 🛠️ CORRECTION 2 : relative z-20 cursor-pointer
                             <button 
                                 onClick={handleClaim}
                                 disabled={claiming}
@@ -207,32 +216,13 @@ const ActivityWidget = ({ joueur, onUpdate }) => {
                 })}
             </div>
 
-            {/* --- MODALE RECOMPENSE (Z-INDEX MAX) --- */}
-            <AnimatePresence>
-                {rewards && (
-                    <motion.div 
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="absolute inset-0 z-50 bg-slate-950/95 flex flex-col items-center justify-center text-center p-4 backdrop-blur-md rounded-2xl"
-                    >
-                        <h3 className="text-2xl font-pirata text-yellow-400 mb-4 animate-bounce">Butin Récupéré !</h3>
-                        <div className="flex flex-col gap-2 mb-6 w-full max-h-[150px] overflow-y-auto">
-                            {rewards.map((r, i) => (
-                                <div key={i} className="bg-white/10 px-4 py-2 rounded-lg text-white font-bold text-sm border border-white/5 shadow-sm">
-                                    {r}
-                                </div>
-                            ))}
-                        </div>
-                        <button 
-                            onClick={() => setRewards(null)}
-                            className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-bold uppercase text-xs shadow-lg hover:shadow-blue-500/50 transition-all relative z-50 cursor-pointer"
-                        >
-                            Continuer
-                        </button>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            {/* 🔥 UTILISATION DU COMPOSANT REWARD MODAL 🔥 */}
+            {rewardResult && (
+                <RewardModal 
+                    result={rewardResult} 
+                    onClose={() => setRewardResult(null)} 
+                />
+            )}
         </div>
     );
 };

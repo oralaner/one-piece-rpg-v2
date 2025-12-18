@@ -162,12 +162,12 @@ export class ActivityService {
         const islandLevel = joueur.localisation?.niveau_requis || 1; 
 
         // --- BUTIN ---
-        let itemsGiven: string[] = [];
+        let itemsGivenNames: string[] = [];
         if (config.loots && config.loots.length > 0) {
             for (const possibleLoot of config.loots) {
                 if (islandLevel >= possibleLoot.min_lvl && islandLevel <= possibleLoot.max_lvl) {
                     const roll = Math.random() * 100;
-                    if (roll <= possibleLoot.chance) itemsGiven.push(possibleLoot.item);
+                    if (roll <= possibleLoot.chance) itemsGivenNames.push(possibleLoot.item);
                 }
             }
         }
@@ -182,9 +182,10 @@ export class ActivityService {
 
         // --- UPDATE ---
         let lootMessage: string[] = [];
+        let structuredItems: any[] = []; // 🔥 Pour le RewardModal
         
-        if (itemsGiven.length > 0) {
-            const itemsDb = await this.prisma.objets.findMany({ where: { nom: { in: itemsGiven } } });
+        if (itemsGivenNames.length > 0) {
+            const itemsDb = await this.prisma.objets.findMany({ where: { nom: { in: itemsGivenNames } } });
             
             for (const item of itemsDb) {
                 const existingInv = await this.prisma.inventaire.findFirst({
@@ -201,10 +202,16 @@ export class ActivityService {
                         data: { joueur_id: userId, objet_id: item.id, quantite: 1 }
                     });
                 }
-                // 🔥 LOG : On vérifie que le message est bien ajouté
-                const msg = `+1 ${item.nom}`;
-                console.log("🎁 Ajout loot msg:", msg);
-                lootMessage.push(msg);
+                
+                lootMessage.push(`+1 ${item.nom}`);
+                
+                // 🔥 On prépare l'objet pour le RewardModal
+                structuredItems.push({
+                    nom: item.nom,
+                    quantite: 1,
+                    image_url: item.image_url,
+                    rarity: item.rarete // Assure-toi que c'est 'rarete' ou 'rarity' selon ton schema
+                });
             }
         }
 
@@ -229,14 +236,20 @@ export class ActivityService {
 
         if (gainXp > 0) lootMessage.push(`+${gainXp} XP`);
         if (gainBerrys > BigInt(0)) lootMessage.push(`+${gainBerrys.toString()} ฿`);
-        if (lootMessage.length === 0) lootMessage.push("Rien trouvé cette fois...");
         
-        console.log("📤 Retour Client:", lootMessage);
+        console.log("📤 Retour Client (Rewards):", structuredItems);
 
         return { 
             success: true, 
             message: "Activité terminée !", 
-            loots: lootMessage,
+            // 🔥 NOUVEAU FORMAT DE RÉPONSE
+            result: {
+                title: "Rapport d'Activité",
+                message: `Vous avez terminé : ${config.nom}`,
+                xp: gainXp,
+                berrys: Number(gainBerrys), // Conversion sécurisée pour le JSON
+                items: structuredItems
+            },
             cooldownEnds: nextAvailable
         };
 
