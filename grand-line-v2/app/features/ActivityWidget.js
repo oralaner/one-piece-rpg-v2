@@ -74,14 +74,24 @@ const ActivityWidget = ({ joueur, onUpdate }) => {
     };
 
     const handleClaim = async () => {
+        if (claiming) return; // Sécurité anti-double clic
+
         try {
             setClaiming(true);
+            console.log("Tentative de récupération...");
+            
             const res = await api.post('/game/activities/claim');
-            setRewards(res.loots); // Affiche la pop-up de butin
-            await fetchActivities();
-            if(onUpdate) onUpdate();
+            
+            console.log("Réponse serveur:", res);
+            setRewards(res.loots); // Affiche la pop-up
+            await fetchActivities(); // Met à jour l'interface
+            if(onUpdate) onUpdate(); // Met à jour l'énergie/berrys
+            
         } catch (e) {
-            console.error(e);
+            console.error("Erreur CLAIM:", e);
+            // Affiche l'erreur à l'écran pour que tu saches ce qui se passe
+            const msg = e.response?.data?.message || "Erreur de connexion";
+            alert(`Impossible de récupérer : ${msg}`);
         } finally {
             setClaiming(false);
         }
