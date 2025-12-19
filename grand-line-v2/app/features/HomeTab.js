@@ -4,8 +4,7 @@ import DailyQuestsWidget from './DailyQuestsWidget';
 import EnergyBar from '../components/EnergyBar'; 
 import ActivityWidget from './ActivityWidget'; // 👈 NOUVEL IMPORT
 
-const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, theme, monEquipage, membresEquipage }) => { 
-    
+const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, theme, monEquipage, membresEquipage, onUpdate }) => {    
     // --- 1. LOGIQUE DE LOCALISATION & SERVICES ---
     const isEnMer = joueur.statut_voyage === 'EN_MER';
     
