@@ -255,7 +255,7 @@ const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, t
                         <ActivityWidget 
                             joueur={joueur} 
                             // Permet de rafraîchir l'interface (ex: énergie) après une action
-                            onUpdate={() => console.log("Activité terminée")} 
+                            onUpdate={onUpdate}
                         />
                     </div>
 

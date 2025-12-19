@@ -454,6 +454,7 @@ export default function Home() {
                             theme={currentTheme}
                             monEquipage={game.monEquipage} 
                             membresEquipage={game.membresEquipage}
+                            onUpdate={game.chargerDonnees}
                         />
                         )}
                         
