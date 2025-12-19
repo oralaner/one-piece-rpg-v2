@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../utils/api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Anchor, Navigation, ShoppingBag, Beer, Hammer, Swords, Locate, Lock, MapPin, Skull, Compass } from 'lucide-react';
+import { Anchor, Navigation, ShoppingBag, Beer, Hammer, Swords, Locate, Lock, MapPin, Skull, Compass, Wind } from 'lucide-react';
+
+// --- NOUVEAUX IMPORTS PHASE 3 ---
+import TravelLogModal from '../components/TravelLogModal';
+import RewardModal from '../components/RewardModal';
 
 const MAP_IMAGE_URL = "/world_map.jpg"; 
 const MAP_WIDTH = 3000;  
 const MAP_HEIGHT = 1630; 
-
 const RATIO_X = 10; 
 const RATIO_Y = 15; 
 
@@ -16,6 +19,10 @@ const NavigationMap = ({ joueur }) => {
     const [selectedIsland, setSelectedIsland] = useState(null);
     const [travelTimer, setTravelTimer] = useState(null);
     const [notification, setNotification] = useState(null);
+
+    // --- ÉTATS ARRIVÉE (PHASE 3) ---
+    const [arrivalJournal, setArrivalJournal] = useState(null); // Pour le récit du voyage
+    const [arrivalRewards, setArrivalRewards] = useState(null); // Pour le butin final
 
     // --- GESTION DU DRAG ---
     const mapRef = useRef(null);
@@ -42,10 +49,6 @@ const NavigationMap = ({ joueur }) => {
     const showMapNotif = (msg, type = 'success') => {
         setNotification({ message: msg, type });
         setTimeout(() => setNotification(null), 4000);
-    };
-
-    const handleMapClick = (e) => {
-        if (isDragging || e.target.closest('button')) return;
     };
 
     // --- FONCTION DE CENTRAGE ---
@@ -92,14 +95,25 @@ const NavigationMap = ({ joueur }) => {
         }
     };
 
+    // --- LOGIQUE DE DÉTECTION D'ARRIVÉE MISE À JOUR ---
     useEffect(() => {
         fetchMap(true);
         const interval = setInterval(async () => {
             if (mapData?.travelStatus?.state === 'EN_MER') {
-                const status = await api.get('/game/map/status');
-                if (status.status === 'ARRIVED') {
-                    fetchMap();
-                    showMapNotif(status.message, "success");
+                try {
+                    const status = await api.get('/game/map/status');
+                    
+                    if (status.status === 'ARRIVED') {
+                        // 1. On capture le journal et les rewards envoyés par le backend
+                        if (status.journal) setArrivalJournal(status.journal);
+                        if (status.rewards) setArrivalRewards(status.rewards);
+                        
+                        // 2. On rafraîchit la carte
+                        fetchMap();
+                        showMapNotif(status.message, "success");
+                    }
+                } catch (e) {
+                    console.error("Erreur lors de la vérification de l'arrivée", e);
                 }
             }
         }, 5000);
@@ -125,7 +139,7 @@ const NavigationMap = ({ joueur }) => {
             if (res.success) {
                 fetchMap();
                 setSelectedIsland(null);
-                showMapNotif(`⚓ Cap sur ${selectedIsland.nom} ! Durée : ${res.duree} min`, "success");
+                showMapNotif(`⚓ Cap sur ${selectedIsland.nom} ! Météo : ${res.meteo?.nom || 'Inconnue'}`, "success");
             }
         } catch (e) {
             const serverMessage = e.response?.data?.message || e.message || "Erreur inconnue";
@@ -193,7 +207,7 @@ const NavigationMap = ({ joueur }) => {
                 onMouseUp={onMouseUp} 
                 onMouseLeave={onMouseUp}
             >
-                <div style={{ width: MAP_WIDTH, height: MAP_HEIGHT, minWidth: MAP_WIDTH, minHeight: MAP_HEIGHT, position: 'relative' }} onClick={handleMapClick}>
+                <div style={{ width: MAP_WIDTH, height: MAP_HEIGHT, minWidth: MAP_WIDTH, minHeight: MAP_HEIGHT, position: 'relative' }}>
                     <img src={MAP_IMAGE_URL} alt="World Map" className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none" draggable="false" />
 
                     {/* TRAJET */}
@@ -290,7 +304,7 @@ const NavigationMap = ({ joueur }) => {
                 </div>
             )}
 
-            {/* 🔥 MODALE DÉTAILS ÎLE (DESIGN "CARTE AU TRÉSOR") 🔥 */}
+            {/* MODALE DÉTAILS ÎLE */}
             <AnimatePresence>
                 {selectedIsland && (
                     <motion.div 
@@ -300,29 +314,17 @@ const NavigationMap = ({ joueur }) => {
                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
                         className="absolute bottom-0 left-0 right-0 z-50 rounded-t-3xl overflow-hidden"
                     >
-                        {/* FOND AVEC EFFET DE FLOU ET DÉGRADÉ */}
                         <div className="absolute inset-0 bg-slate-900/95 backdrop-blur-xl border-t-4 border-yellow-600/50 shadow-[0_-10px_40px_rgba(0,0,0,0.8)]"></div>
                         
-                        {/* CONTENU */}
                         <div className="relative p-6 pt-8 pb-8 flex flex-col gap-6 max-h-[70vh] overflow-y-auto">
-                            
-                            {/* BOUTON FERMER */}
-                            <button 
-                                onClick={() => setSelectedIsland(null)} 
-                                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors border border-white/5"
-                            >
-                                ✕
-                            </button>
+                            <button onClick={() => setSelectedIsland(null)} className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/5">✕</button>
 
-                            {/* 1. EN-TÊTE : NOM & TYPE */}
                             <div className="flex items-start gap-4">
                                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-white/10 flex items-center justify-center shrink-0 shadow-inner">
                                     {selectedIsland.is_visited ? <Compass size={32} className="text-yellow-500" /> : <span className="text-3xl grayscale opacity-50">🏝️</span>}
                                 </div>
                                 <div>
-                                    <h3 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-600 font-pirata tracking-wide drop-shadow-md leading-none mb-1">
-                                        {selectedIsland.nom}
-                                    </h3>
+                                    <h3 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-600 font-pirata tracking-wide drop-shadow-md leading-none mb-1">{selectedIsland.nom}</h3>
                                     <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400">
                                         <span className="text-blue-400">{selectedIsland.ocean}</span>
                                         <span>•</span>
@@ -331,76 +333,75 @@ const NavigationMap = ({ joueur }) => {
                                 </div>
                             </div>
 
-                            {/* 2. GRILLE D'INFOS */}
                             <div className="grid grid-cols-2 gap-3">
-                                {/* DIFFICULTÉ / NIVEAU */}
                                 <div className={`p-3 rounded-xl border flex items-center gap-3 ${playerLevel >= selectedIsland.niveau_requis ? 'bg-emerald-900/20 border-emerald-500/30' : 'bg-red-900/20 border-red-500/30'}`}>
-                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold border ${playerLevel >= selectedIsland.niveau_requis ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>
-                                        {selectedIsland.niveau_requis}
-                                    </div>
+                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg font-bold border ${playerLevel >= selectedIsland.niveau_requis ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>{selectedIsland.niveau_requis}</div>
                                     <div>
                                         <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Difficulté</p>
-                                        <p className={`text-sm font-bold ${playerLevel >= selectedIsland.niveau_requis ? 'text-emerald-300' : 'text-red-300'}`}>
-                                            {playerLevel >= selectedIsland.niveau_requis ? "Abordable" : "Dangereux"}
-                                        </p>
+                                        <p className={`text-sm font-bold ${playerLevel >= selectedIsland.niveau_requis ? 'text-emerald-300' : 'text-red-300'}`}>{playerLevel >= selectedIsland.niveau_requis ? "Abordable" : "Dangereux"}</p>
                                     </div>
                                 </div>
 
-                                {/* RESSOURCES / SERVICES */}
                                 <div className="p-3 rounded-xl bg-slate-800/30 border border-white/5 flex flex-col justify-center">
                                     <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">Points d'intérêt</p>
-                                    
                                     {selectedIsland.is_visited ? (
                                         <div className="flex flex-wrap gap-2">
-                                            {selectedIsland.facilities?.length > 0 ? (
-                                                selectedIsland.facilities.map((fac, i) => (
-                                                    <div key={i} title={getFacilityLabel(fac)} className="w-8 h-8 rounded-lg bg-slate-700/50 border border-white/10 flex items-center justify-center hover:bg-slate-600 transition-colors cursor-help">
-                                                        {getFacilityIcon(fac)}
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <span className="text-xs text-slate-500 italic">Aucun service</span>
-                                            )}
+                                            {selectedIsland.facilities?.length > 0 ? selectedIsland.facilities.map((fac, i) => (
+                                                <div key={i} title={getFacilityLabel(fac)} className="w-8 h-8 rounded-lg bg-slate-700/50 border border-white/10 flex items-center justify-center hover:bg-slate-600 transition-colors cursor-help">{getFacilityIcon(fac)}</div>
+                                            )) : <span className="text-xs text-slate-500 italic">Aucun service</span>}
                                         </div>
-                                    ) : (
-                                        <div className="flex items-center gap-2 opacity-50">
-                                            <span className="text-xl">❓</span>
-                                            <span className="text-xs text-slate-400 italic">Zone Inconnue</span>
-                                        </div>
-                                    )}
+                                    ) : <div className="flex items-center gap-2 opacity-50"><span className="text-xl">❓</span><span className="text-xs text-slate-400 italic">Zone Inconnue</span></div>}
                                 </div>
                             </div>
 
-                            {/* 3. DESCRIPTION (Si visité) */}
                             {selectedIsland.is_visited && selectedIsland.description && (
                                 <div className="bg-black/20 p-4 rounded-xl border border-white/5">
-                                    <p className="text-sm text-slate-300 italic leading-relaxed">
-                                        "{selectedIsland.description}"
-                                    </p>
+                                    <p className="text-sm text-slate-300 italic leading-relaxed">"{selectedIsland.description}"</p>
                                 </div>
                             )}
 
-                            {/* 4. BOUTON ACTION */}
                             <button 
                                 onClick={handleTravel}
                                 disabled={playerLevel < selectedIsland.niveau_requis}
                                 className={`w-full py-4 rounded-xl font-black uppercase tracking-widest text-lg shadow-lg flex items-center justify-center gap-3 transition-all duration-300
-                                    ${playerLevel < selectedIsland.niveau_requis 
-                                        ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed' 
-                                        : 'bg-gradient-to-r from-blue-700 to-blue-500 hover:from-blue-600 hover:to-blue-400 text-white border-t border-white/20 active:scale-95 hover:shadow-blue-900/50'}
+                                    ${playerLevel < selectedIsland.niveau_requis ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed' : 'bg-gradient-to-r from-blue-700 to-blue-500 hover:from-blue-600 hover:to-blue-400 text-white border-t border-white/20 active:scale-95 hover:shadow-blue-900/50'}
                                 `}
                             >
-                                {playerLevel < selectedIsland.niveau_requis ? (
-                                    <> <Lock size={20} /> Niveau Insuffisant </>
-                                ) : (
-                                    <> <Navigation size={24} className={playerLevel >= selectedIsland.niveau_requis ? "animate-pulse" : ""} /> Mettre les voiles </>
-                                )}
+                                {playerLevel < selectedIsland.niveau_requis ? <><Lock size={20} /> Niveau Insuffisant</> : <><Navigation size={24} className="animate-pulse" /> Mettre les voiles</>}
                             </button>
-
                         </div>
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* --- NOUVEAUX POP-UPS D'ARRIVÉE (PHASE 3) --- */}
+            
+            {/* 1. JOURNAL DE BORD (Récit) */}
+            <AnimatePresence>
+                {arrivalJournal && (
+                    <TravelLogModal 
+                        data={arrivalJournal} 
+                        onClose={() => setArrivalJournal(null)} 
+                    />
+                )}
+            </AnimatePresence>
+
+            {/* 2. BUTIN (Apparaît après la fermeture du journal) */}
+            <AnimatePresence>
+                {arrivalRewards && !arrivalJournal && (
+                    <RewardModal 
+                        result={{
+                            title: "Butin de Traversée",
+                            message: "Objets récupérés en mer",
+                            xp: arrivalRewards.xp,
+                            berrys: 0,
+                            items: arrivalRewards.items
+                        }} 
+                        onClose={() => setArrivalRewards(null)} 
+                    />
+                )}
+            </AnimatePresence>
+
         </div>
     );
 };

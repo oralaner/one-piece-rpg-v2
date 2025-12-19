@@ -90,6 +90,30 @@ model destinations {
   joueurs          joueurs[]       // Joueurs présents sur l'île
   boutique_objets  boutique_ile[]  // Objets vendus ici
 
+  biome            String?   @default("NORMAL") // Ex: "DESERT", "HIVER", "TROPICAL", "VOLCANIQUE"
+
+  @@schema("public")
+}
+// --- Modèle METEO_REF ---
+model meteo_ref {
+  id                String   @id @default(uuid())
+  nom               String   @unique
+  emoji             String
+  description       String
+  
+  coeff_xp          Float    @default(1.0)
+  coeff_berrys      Float    @default(1.0)
+  coeff_duree       Float    @default(1.0)
+  coeff_loot_chance Float    @default(1.0)
+  coeff_energie     Float    @default(1.0)
+
+  type_zone         String   @default("GLOBAL")
+  biomes_interdits  String[] @default([])
+  poids_aleatoire   Int      @default(10)
+
+  // 👇 AJOUTE CETTE LIGNE POUR FIXER L'ERREUR 👇
+  joueurs_en_trajet joueurs[]
+
   @@schema("public")
 }
 
@@ -165,6 +189,10 @@ model joueurs {
   trajet_depart_id    Int?        // ID île départ
   trajet_arrivee_id   Int?        // ID île arrivée
   trajet_fin          DateTime?   @db.Timestamptz(6) // Timestamp arrivée
+  // NAVIGATION & RÉCIT
+  trajet_meteo_id     String?   // Météo fixée au départ du voyage
+  trajet_summary      Json?     // { "events": ["Un banc de thons croisé", "Épave fouillée"], "xp": 150, "items": [...] }
+  trajet_meteo        meteo_ref? @relation(fields: [trajet_meteo_id], references: [id])
   
   // Localisation actuelle (Si A_QUAI)
   localisation_id     Int?        @default(1) // Correspond à l'ID dans destinations
@@ -566,20 +594,6 @@ model meteo {
   region       String    @id
   climat       String?   @default("SOLEIL")
   derniere_maj DateTime? @default(now()) @db.Timestamptz(6)
-
-  @@schema("public")
-}
-
-model meteo_ref {
-  id                String @id @default(uuid())
-  nom               String @unique
-  emoji             String
-  description       String
-  coeff_xp          Float  @default(1.0)
-  coeff_berrys      Float  @default(1.0)
-  coeff_duree       Float  @default(1.0)
-  coeff_reussite    Float  @default(1.0)
-  coeff_loot_chance Float  @default(1.0)
 
   @@schema("public")
 }

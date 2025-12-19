@@ -2,7 +2,8 @@ import React from 'react';
 import { getRankInfo } from '../utils/gameUtils';
 import DailyQuestsWidget from './DailyQuestsWidget';
 import EnergyBar from '../components/EnergyBar'; 
-import ActivityWidget from './ActivityWidget'; // 👈 NOUVEL IMPORT
+import ActivityWidget from './ActivityWidget'; 
+import { CloudRain, Sun, Wind, Thermometer, Zap } from 'lucide-react'; // Ajout pour le style météo
 
 const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, theme, monEquipage, membresEquipage, onUpdate }) => {    
     // --- 1. LOGIQUE DE LOCALISATION & SERVICES ---
@@ -144,6 +145,37 @@ const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, t
                 
                 <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-3 auto-rows-min">
                     
+                    {/* 🔥🔥 NOUVEAU : WIDGET MÉTÉO (PHASE 3) 🔥🔥 */}
+                    <div className="md:col-span-2 bg-slate-900/60 border border-white/5 p-4 rounded-2xl relative overflow-hidden group">
+                        {/* Effet visuel selon météo */}
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 blur-3xl rounded-full -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+                        
+                        <div className="relative z-10 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="text-4xl drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] animate-pulse shrink-0">
+                                    {joueur.trajet_meteo?.emoji || '☀️'}
+                                </div>
+                                <div className="flex flex-col">
+                                    <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Climat Actuel</h4>
+                                    <h3 className="text-lg font-black text-white uppercase tracking-tight leading-none">
+                                        {joueur.trajet_meteo?.nom || 'Grand Soleil'}
+                                    </h3>
+                                </div>
+                            </div>
+                            
+                            <div className="flex flex-col items-end text-right gap-1">
+                                <p className="text-[10px] text-slate-400 font-bold italic leading-tight max-w-[200px]">
+                                    {joueur.trajet_meteo?.description || 'Une journée parfaite pour naviguer ou travailler.'}
+                                </p>
+                                {/* Indicateurs d'impact (optionnels visuellement) */}
+                                <div className="flex gap-2 opacity-50">
+                                    {joueur.trajet_meteo?.coeff_energie > 1 && <span title="Consomme plus d'énergie" className="text-red-400"><Zap size={12} fill="currentColor"/></span>}
+                                    {joueur.trajet_meteo?.coeff_loot_chance > 1 && <span title="Meilleur butin" className="text-emerald-400">💎</span>}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* --- CARTE 1 : SANTÉ --- */}
                     <div onClick={() => onNavigate('inventaire')} className="bg-slate-900/60 border border-white/5 p-4 rounded-2xl relative overflow-hidden group cursor-pointer hover:border-emerald-500/30 transition-all duration-300">
                         <div className="absolute -right-4 -bottom-4 text-7xl opacity-5 group-hover:opacity-10 transition-opacity rotate-12">💚</div>
@@ -253,7 +285,6 @@ const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, t
                     <div className="md:col-span-2">
                         <ActivityWidget 
                             joueur={joueur} 
-                            // Permet de rafraîchir l'interface (ex: énergie) après une action
                             onUpdate={onUpdate}
                         />
                     </div>

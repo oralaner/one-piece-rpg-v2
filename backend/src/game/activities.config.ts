@@ -172,5 +172,15 @@ export const ACTIVITIES_CONFIG = {
         { item: "Poudre à canon", chance: 30, min_lvl: 20, max_lvl: 200 },
         { item: "Bandeau du Révolutionnaire", chance: 1, min_lvl: 50, max_lvl: 200 }
     ]
+  },
+  // 🔥 CONFIGURATION DES TRAVERSÉES
+  VOYAGE_SYSTEM: {
+    xp_par_minute: 10,
+    chance_evenement_par_minute: 15, // 15% de chance de trouver un truc chaque minute
+    evenements: [
+      { id: 'FLOTSAM', nom: "Débris flottants", chance: 60, loots: ["Bois Flottant", "Corde Usée", "Tissu de Voile"] },
+      { id: 'FISHING_AUTO', nom: "Banc de poissons", chance: 30, loots: ["Sardine", "Maquereau", "Thon"] },
+      { id: 'WRECK', nom: "Épave de navire", chance: 10, is_rare: true, loots: ["Figure de Proue Antique", "Doublon de l'Ancien Monde", "Coffre rare"] }
+    ]
   }
 };

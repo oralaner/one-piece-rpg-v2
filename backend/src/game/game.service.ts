@@ -21,6 +21,7 @@ import { UpdateCrewDto } from './crew-manage.dto';
 import { OpenChestDto } from './crew-manage.dto';
 import { Prisma } from '@prisma/client';
 import { StoryService } from './story.service';
+import { ACTIVITIES_CONFIG } from './activities.config';
 
 // ====================================================================
 // 💰 DÉFINITIONS DES TABLES DE LOOT
@@ -93,73 +94,6 @@ const LOOT_TABLES = {
     },
 };
 
-const LOOT_ACTIVITY_TABLE = [
-    { rarity: 'Commun', chance: 50, min: 1, max: 3 },
-    { rarity: 'Commun', chance: 25, min: 1, max: 3 }, // n°2
-    { rarity: 'Rare', chance: 5, min: 1, max: 1 },
-    { rarity: 'Épique', chance: 0, min: 0, max: 0 },
-    { rarity: 'Légendaire', chance: 0, min: 0, max: 0 },
-    { rarity: 'Mythique', chance: 0, min: 0, max: 0 },
-];
-
-const LOOT_VOYAGE_TABLES = {
-    LOW: [
-        { rarity: 'Commun', chance: 50, min: 1, max: 3 },
-        { rarity: 'Commun', chance: 25, min: 1, max: 3 },
-        { rarity: 'Rare', chance: 5, min: 1, max: 1 },
-    ],
-    MEDIUM: [
-        { rarity: 'Commun', chance: 100, min: 3, max: 5 },
-        { rarity: 'Commun', chance: 75, min: 3, max: 5 },
-        { rarity: 'Rare', chance: 25, min: 1, max: 3 },
-        { rarity: 'Épique', chance: 5, min: 1, max: 1 },
-    ],
-    HIGH: [
-        { rarity: 'Commun', chance: 100, min: 6, max: 10 },
-        { rarity: 'Commun', chance: 100, min: 6, max: 10 },
-        { rarity: 'Rare', chance: 100, min: 3, max: 5 },
-        { rarity: 'Rare', chance: 75, min: 3, max: 5 },
-        { rarity: 'Épique', chance: 25, min: 1, max: 3 },
-        { rarity: 'Légendaire', chance: 5, min: 1, max: 1 },
-    ],
-    EXPERT: [
-        { rarity: 'Rare', chance: 100, min: 6, max: 10 },
-        { rarity: 'Rare', chance: 100, min: 6, max: 10 },
-        { rarity: 'Épique', chance: 100, min: 3, max: 5 },
-        { rarity: 'Épique', chance: 75, min: 3, max: 5 },
-        { rarity: 'Légendaire', chance: 25, min: 1, max: 3 },
-        { rarity: 'Mythique', chance: 5, min: 1, max: 1 },
-    ],
-    LEGENDARY: [
-        { rarity: 'Épique', chance: 100, min: 6, max: 10 },
-        { rarity: 'Épique', chance: 100, min: 6, max: 10 },
-        { rarity: 'Légendaire', chance: 100, min: 3, max: 5 },
-        { rarity: 'Légendaire', chance: 50, min: 3, max: 5 },
-        { rarity: 'Mythique', chance: 25, min: 1, max: 1 },
-    ],
-};
-
-const CHEST_RARITY_MAP = {
-    'Coffre Commun': 'COMMUN',
-    'Coffre Rare': 'RARE',
-    'Coffre Épique': 'ÉPIQUE',
-    'Coffre Légendaire': 'LÉGENDAIRE',
-    'Coffre Mythique': 'MYTHIQUE',
-};
-
-const FORBIDDEN_LOOT_TYPES = [
-    'Fruit', 
-    'Fruit du Démon', 
-    'Arme', 
-    'Tête', 
-    'Corps', 
-    'Bottes', 
-    'Bague', 
-    'Collier', 
-    'Navire', 
-    'Coffre',
-    'Équipement' // Ajout explicite
-];
 
 @Injectable()
 export class GameService {
@@ -265,39 +199,6 @@ export class GameService {
 
     return { berrys: berrysGain, items: rewards };
 }
-
-// 🔥 HELPER LOOT ACTIVITÉ : Génère le butin (Multi-roll + Secure)
-  // Utilise maintenant 'tx' et 'findRandomItemInRarity' comme les coffres
-  private async generateActivityLoot(lootTable: any[], tx: any) {
-    if (!lootTable || lootTable.length === 0) return { items: [] };
-    
-    const rewards: any[] = [];
-
-    for (const rule of lootTable) {
-        // Le jet est réussi si le nombre aléatoire (0-100) est <= à la chance
-        if (this.getRandomQuantity(0, 100) <= rule.chance) {
-            
-            const quantity = this.getRandomQuantity(rule.min, rule.max);
-            
-            if (quantity > 0) {
-                // ✅ On utilise la fonction robuste (celle des coffres)
-                // Elle garantit : Pas d'équipement, Pas de Fruit, Pas de Coffre
-                const randomItem = await this.findRandomItemInRarity(rule.rarity, tx);
-                
-                if (randomItem) {
-                    rewards.push({
-                        objet_data: randomItem, // On garde l'objet complet
-                        quantite: quantity,
-                    });
-                }
-            }
-        }
-    }
-    return { items: rewards };
-  }
-  // =================================================================
-  // 📜 CONFIGURATION DES QUÊTES QUOTIDIENNES
-  // =================================================================
 
  // =================================================================
   // 📜 SYSTÈME DE QUÊTES QUOTIDIENNES (VERSION MISE À JOUR)
@@ -1730,31 +1631,54 @@ async sellItem(dto: SellItemDto) {
       { id: 'HEAT', nom: 'Canicule', icon: '🥵', description: 'Chaleur écrasante.', bonus_vitesse: 1.05 }
   ];
 
-  async getMeteo() {
-      // 1. Calcul du "Bloc Temps" de 2 heures
-      const DUREE_BLOC = 2 * 60 * 60 * 1000; // 2 heures en ms
-      const timestamp = new Date().getTime();
-      const blockIndex = Math.floor(timestamp / DUREE_BLOC);
+  async getMeteoForLocation(islandId?: number, type: 'MER' | 'TERRE' = 'TERRE') {
+    const allMeteos = await this.prisma.meteo_ref.findMany();
+    const DUREE_BLOC = 2 * 60 * 60 * 1000; // 2 heures
+    const timestamp = new Date().getTime();
+    const blockIndex = Math.floor(timestamp / DUREE_BLOC);
 
-      // 2. Génération pseudo-aléatoire stable basée sur le blockIndex
-      // Cela garantit que tous les joueurs ont la même météo au même moment
-      const seed = blockIndex * 9301 + 49297;
-      const random = (seed % 233280) / 233280.0;
+    // 1. Filtrage par zone (Mer ou Terre)
+    let pool = allMeteos.filter(m => m.type_zone === type || m.type_zone === 'GLOBAL');
 
-      // 3. Sélection de la météo
-      const weatherIndex = Math.floor(random * this.WEATHER_TYPES.length);
-      const currentMeteo = this.WEATHER_TYPES[weatherIndex];
+    // 2. Gestion du Lore (Biomes)
+    if (islandId) {
+        const destination = await this.prisma.destinations.findUnique({ where: { id: islandId } });
+        const biome = destination?.biome || 'NORMAL';
+        
+        // On retire les météos interdites dans ce biome (ex: Neige dans le désert)
+        pool = pool.filter(m => !m.biomes_interdits.includes(biome));
+        
+        // Boost de probabilité spécifique
+        pool = pool.map(m => {
+            let p = m.poids_aleatoire;
+            if (biome === 'DESERT' && m.nom.includes('Sable')) p *= 5;
+            if (biome === 'HIVER' && m.nom.includes('Blizzard')) p *= 5;
+            return { ...m, poids_calcule: p };
+        });
+    } else {
+        pool = pool.map(m => ({ ...m, poids_calcule: m.poids_aleatoire }));
+    }
 
-      // 4. Calcul du temps restant avant le changement
-      const nextChange = (blockIndex + 1) * DUREE_BLOC;
-      const msRestantes = nextChange - timestamp;
+    // 3. Tirage aléatoire stable (Seedé par le bloc temps + ID lieu)
+    const seedBase = blockIndex + (islandId || 999);
+    const randomValue = (Math.abs(Math.sin(seedBase) * 10000) % 1);
+    
+    const totalPoids = pool.reduce((acc, m: any) => acc + m.poids_calcule, 0);
+    let cursor = 0;
+    const threshold = randomValue * totalPoids;
 
-      return {
-          ...currentMeteo,
-          nextUpdate: new Date(nextChange),
-          msBeforeUpdate: msRestantes
-      };
-  }
+    for (const m of pool as any[]) {
+        cursor += m.poids_calcule;
+        if (cursor >= threshold) {
+            return {
+                ...m,
+                nextUpdate: new Date((blockIndex + 1) * DUREE_BLOC),
+                msBeforeUpdate: ((blockIndex + 1) * DUREE_BLOC) - timestamp
+            };
+        }
+    }
+    return pool[0]; // Fallback
+}
 
 // =================================================================
   // ⚔️ LANCER UN COMBAT D'HISTOIRE (Par Nom du Bot)
@@ -3539,261 +3463,6 @@ private calculatePlayerStats(joueur: any) {
 
     return newUnlockedTitres; 
   }
-// =================================================================
-  // 9. ACTIVITÉ / EXPLORATION
-  // =================================================================
-  async clickActivite(dto: { userId: string, type?: string }) {
-    const joueur = await this.prisma.joueurs.findUnique({ 
-        where: { id: dto.userId },
-        include: { equip_corps: true } 
-    });
-    
-    if (!joueur) throw new BadRequestException("Joueur introuvable");
-
-    // Cooldown
-    const now = new Date();
-    if (joueur.derniere_fouille) {
-        const diff = now.getTime() - new Date(joueur.derniere_fouille).getTime();
-        if (diff < 60000) throw new BadRequestException("Repos requis !");
-    }
-
-    // Calcul Gains
-    const rand = Math.random(); 
-    let xpGain = 0;
-    let berrysGain = 0;
-    let message = "";
-
-    if (rand < 0.10) {
-        xpGain = 50 * (joueur.niveau ?? 1);
-        berrysGain = 500 * (joueur.niveau ?? 1);
-        message = "Trésor caché ! 💎";
-    } else if (rand < 0.50) {
-        xpGain = 30 * (joueur.niveau ?? 1);
-        berrysGain = 10 * (joueur.niveau ?? 1);
-        message = "Bandits repoussés !";
-    } else {
-        xpGain = 10 * (joueur.niveau ?? 1);
-        berrysGain = 50 * (joueur.niveau ?? 1);
-        message = "Travail terminé.";
-    }
-
-    let itemRewards: any[] = [];
-    let isLeveledUp = false;
-    let currentNewLevel = joueur.niveau ?? 1;
-
-    // --- TRANSACTION ---
-    await this.prisma.$transaction(async (tx) => {
-        
-        // 1. Loot
-        const loot = await this.generateActivityLoot(LOOT_ACTIVITY_TABLE, tx);
-        itemRewards = loot.items;
-
-        // 2. CALCUL LEVEL UP
-        // ⚠️ Je n'utilise PAS 'addXpAndLevelUp' ici, mais le helper local
-        const { updateData, levelsGained, newLevel } = this.calculateLevelUp(joueur, xpGain);
-        
-        isLeveledUp = levelsGained > 0;
-        currentNewLevel = newLevel;
-
-        // 3. Compléter l'objet de mise à jour
-        updateData.berrys = { increment: berrysGain };
-        updateData.nb_activites = { increment: 1 };
-        updateData.derniere_fouille = now;
-
-        // 4. MISE À JOUR JOUEUR (CRITIQUE)
-        // Vérifiez bien que vous n'avez pas de ligne 'xp: { increment: ... }' ici !
-        await tx.joueurs.update({
-            where: { id: dto.userId },
-            data: updateData // On envoie l'objet calculé par le helper
-        });
-
-        // 5. Inventaire
-        for (const reward of itemRewards) {
-            const objet = reward.objet_data;
-            const existing = await tx.inventaire.findFirst({ where: { joueur_id: dto.userId, objet_id: objet.id } });
-            
-            if (existing) {
-                await tx.inventaire.update({ where: { id: existing.id }, data: { quantite: { increment: reward.quantite } } });
-            } else {
-                await tx.inventaire.create({ data: { joueur_id: dto.userId, objet_id: objet.id, quantite: reward.quantite, stats_perso: Prisma.DbNull } });
-            }
-            reward.nom = objet.nom;
-            reward.rarity = objet.rarete;
-            reward.image_url = objet.image_url;
-            delete reward.objet_data;
-        }
-    });
-
-    await this.clearCache(dto.userId);
-    this.updateQuestProgress(dto.userId, 'ACTIVITY', 1);
-    // Retour
-    return { 
-        success: true, 
-        message: isLeveledUp ? `NIVEAU ${currentNewLevel} ATTEINT !` : message, 
-        rewards: { xp: xpGain, berrys: berrysGain, items: itemRewards },
-        leveledUp: isLeveledUp,
-        newLevel: currentNewLevel
-    };
-  }
-
-// =================================================================
-// 2. RÉCOLTE EXPÉDITION (CORRIGÉE : CHANCE BASÉE SUR LES STATS)
-// =================================================================
-async recolterExpedition(dto: { userId: string }) {
-    // 1. Récupération du joueur (Sans inclure 'localisation' qui bug)
-    const joueur = await this.prisma.joueurs.findUnique({ 
-        where: { id: dto.userId },
-        // IMPORTANT : On inclut l'inventaire pour que calculatePlayerStats fonctionne
-        include: { equip_corps: true, inventaire: { include: { objets: true } } } 
-    });
-
-    if (!joueur) throw new BadRequestException("Joueur introuvable.");
-    if (!joueur.expedition_fin || new Date(joueur.expedition_fin).getTime() > new Date().getTime()) {
-        throw new BadRequestException("Patience... Les marins ne sont pas revenus.");
-    }
-    
-    // --- 2. RÉCUPÉRATION MANUELLE DE LA DESTINATION ---
-    let destination: any = null;
-    if (joueur.localisation_id) {
-        destination = await this.prisma.destinations.findUnique({
-            where: { id: joueur.localisation_id }
-        });
-    }
-
-    // --- 3. CALCUL DE LA RÉUSSITE (Basé sur les Stats du Joueur) ---
-    
-    // On doit inclure l'inventaire pour que calculatePlayerStats fonctionne correctement dans la requête principale
-    // (Je suppose que vous avez fait la correction dans le findUnique au début de la fonction)
-    const stats = this.calculatePlayerStats(joueur); 
-    
-    // a. Définir la Difficulté
-    const difficulteIle = destination?.difficulte || (destination?.niveau_requis * 30) || 30; 
-    
-    // b. Formule de Puissance Mixte (Doit être la même que le Frontend)
-    const puissanceJoueur = (stats.force * 1.5) + (stats.agilite * 1.2) + (stats.intelligence * 1.0);
-    
-    // c. Calcul de la Chance (Nouvelle formule stricte)
-    let ratio = puissanceJoueur / Math.max(1, difficulteIle);
-    let chancePercent = Math.floor(ratio * 20) + 20; // Pivot à 40% à l'équilibre
-    
-    // d. Ajustement de niveau (+1% tous les 5 niveaux)
-    chancePercent += Math.max(0, (joueur.niveau || 1) / 5);
-
-    // Bornes : Min 10%, Max 95%
-    chancePercent = Math.min(95, Math.max(10, chancePercent));
-
-    // 🎲 TIRAGE AU SORT
-    const roll = Math.random() * 100;
-    const isSuccess = roll <= chancePercent;
-
-    console.log(`🎲 Expédition ${joueur.pseudo} (Puissance ${puissanceJoueur.toFixed(0)}) vs Île (Diff ${difficulteIle}) : ${chancePercent}% chance. Roll: ${roll.toFixed(1)} -> ${isSuccess ? "SUCCÈS" : "ÉCHEC"}`);
-
-    // --- CAS D'ÉCHEC ---
-    if (!isSuccess) {
-        // Gain de consolation
-        const xpConsolation = Math.floor(50 * Math.max(1, (joueur.niveau || 1) / 2));
-        
-        // 🔥 CORRECTION : On utilise calculateLevelUp même pour l'XP de consolation !
-        // Sinon l'XP dépasse le max sans déclencher le passage de niveau.
-        const { updateData, levelsGained, newLevel } = this.calculateLevelUp(joueur, xpConsolation);
-
-        // On ajoute les champs spécifiques à l'échec de l'expédition
-        updateData.expedition_fin = null;
-        
-        // On sauvegarde
-        await this.prisma.joueurs.update({
-            where: { id: dto.userId },
-            data: updateData
-        });
-        
-        // On vérifie les titres (ex: Atteindre le niveau 10 grâce à l'échec)
-        const updatedJoueur = await this.prisma.joueurs.findUnique({ where: { id: dto.userId } });
-        if (updatedJoueur) await this.checkAndUnlockTitles(dto.userId);
-
-        await this.clearCache(dto.userId);
-
-        return {
-            success: false,
-            message: levelsGained > 0 
-                ? `Échec... mais l'expérience vous a endurci : NIVEAU ${newLevel} !` 
-                : "L'expédition a échoué... Vos hommes sont revenus bredouilles mais un peu plus sages.",
-            rewards: { xp: xpConsolation, berrys: 0, items: [] },
-            leveledUp: levelsGained > 0,
-            newLevel: newLevel
-        };
-    }
-
-    // --- CAS DE RÉUSSITE ---
-    
-    const playerLevel = joueur.niveau || 1;
-    // Logique loot table
-    let lootTable = LOOT_VOYAGE_TABLES.LOW; 
-    if (playerLevel > 10) lootTable = LOOT_VOYAGE_TABLES.MEDIUM; 
-
-    const gainXP = this.getRandomQuantity(50, 100) * playerLevel; 
-    const gainBerrys = this.getRandomQuantity(500, 1500) * Math.max(1, Math.floor(playerLevel / 2)); 
-
-    let itemRewards: any[] = [];
-    let isLeveledUp = false;
-    let currentNewLevel = playerLevel;
-
-    await this.prisma.$transaction(async (tx) => {
-        const loot = await this.generateActivityLoot(lootTable, tx);
-        itemRewards = loot.items;
-
-        // 🔥 CALCUL LEVEL UP
-        const { updateData, levelsGained, newLevel } = this.calculateLevelUp(joueur, gainXP);
-        
-        isLeveledUp = levelsGained > 0;
-        currentNewLevel = newLevel;
-
-        // Compléter updateData
-        updateData.berrys = { increment: gainBerrys };
-        updateData.expedition_fin = null;
-        updateData.nb_expeditions_reussies = { increment: 1 };
-
-        // UPDATE JOUEUR
-        await tx.joueurs.update({
-            where: { id: dto.userId },
-            data: updateData
-        });
-
-        // Inventaire
-        for (const reward of itemRewards) {
-            const objet = reward.objet_data;
-            const existing = await tx.inventaire.findFirst({ where: { joueur_id: dto.userId, objet_id: objet.id } });
-            if (existing) {
-                await tx.inventaire.update({ where: { id: existing.id }, data: { quantite: { increment: reward.quantite } } });
-            } else {
-                await tx.inventaire.create({ data: { joueur_id: dto.userId, objet_id: objet.id, quantite: reward.quantite, stats_perso: Prisma.DbNull } });
-            }
-            // Nettoyage pour le retour JSON
-            reward.nom = objet.nom;
-            reward.rarity = objet.rarete;
-            reward.image_url = objet.image_url;
-            delete reward.objet_data;
-        }
-    });
-
-    const newTitres = await this.checkAndUnlockTitles(dto.userId);
-
-    await this.clearCache(dto.userId);
-    this.updateQuestProgress(dto.userId, 'VOYAGE', 1);
-
-    // Tu peux ajouter les titres au message de retour si tu veux
-    let messageFinale = isLeveledUp ? `Succès ! NIVEAU ${currentNewLevel} ATTEINT !` : `Expédition réussie !`;
-    if (newTitres && newTitres.length > 0) {
-        messageFinale += ` 🏆 Titre(s) débloqué(s) : ${newTitres.join(', ')}`;
-    }
-
-    return {
-        success: true,
-        message: isLeveledUp ? `Succès ! NIVEAU ${currentNewLevel} ATTEINT !` : `Expédition réussie !`,
-        rewards: { xp: gainXP, berrys: gainBerrys, items: itemRewards },
-        leveledUp: isLeveledUp,
-        newLevel: currentNewLevel
-    };
-}
 
 // --- BOUTIQUE ---
   async getShopItems() {
@@ -3807,55 +3476,6 @@ async recolterExpedition(dto: { userId: string }) {
     });
     
     return items;
-  }
-
-
-
-  // 🔥 HELPER : Ajoute de l'XP et gère la montée de niveau (Boucle while)
-  private async addXpAndLevelUp(tx: any, userId: string, xpGain: number) {
-    // 1. On récupère les données actuelles
-    const joueur = await tx.joueurs.findUnique({ where: { id: userId } });
-    
-    let currentXp = (joueur.xp || 0) + xpGain;
-    let currentLevel = joueur.niveau || 1;
-    let currentPoints = joueur.points_carac || 0;
-    let leveledUp = false;
-
-    // 2. Formule d'XP (Doit être IDENTIQUE au Frontend)
-    // XP requise = 100 * (Niveau ^ 1.5)
-    let xpRequis = Math.floor(100 * Math.pow(currentLevel, 1.5));
-
-    // 3. Boucle de montée de niveau (Gère les multi-lvls d'un coup)
-    while (currentXp >= xpRequis) {
-        currentXp -= xpRequis; // On retire le coût du niveau
-        currentLevel++;        // On monte de niveau
-        currentPoints += 5;    // +5 Points de stats par niveau
-        leveledUp = true;
-        
-        // Recalcul du prochain palier pour la boucle suivante
-        xpRequis = Math.floor(100 * Math.pow(currentLevel, 1.5));
-    }
-
-    // 4. Préparation des données de mise à jour
-    const updateData: any = {
-        xp: currentXp,
-        niveau: currentLevel,
-        points_carac: currentPoints
-    };
-
-    // Bonus : Soin complet + Énergie max si Level Up !
-    if (leveledUp) {
-
-        updateData.energie_actuelle = 10; 
-    }
-
-    // 5. Application en BDD
-    await tx.joueurs.update({
-        where: { id: userId },
-        data: updateData
-    });
-
-    return { leveledUp, currentLevel };
   }
 
   // =================================================================
@@ -3882,8 +3502,6 @@ async recolterExpedition(dto: { userId: string }) {
             take: 100 // Limite pour la performance
         });
     }
-
-// ... dans game.service.ts
 
     async adminAction(adminId: string, targetId: string, action: string, amount?: number) {
         await this.verifyAdmin(adminId);
@@ -4194,130 +3812,145 @@ async recolterExpedition(dto: { userId: string }) {
     };
   }
 
-  // 2. LANCER LE VOYAGE (SÉCURISÉ)
-  async startTravel(userId: string, destinationId: number) {
-    console.log(`🚀 [TRAVEL] User ${userId} veut aller à ${destinationId}`);
-
+async startTravel(userId: string, destinationId: number) {
     const joueur = await this.prisma.joueurs.findUnique({ 
-        where: { id: userId },
+        where: { id: userId }, 
         include: { localisation: true } 
     });
 
-    if (!joueur) throw new BadRequestException("Joueur inconnu.");
-
-    // --- BLOCAGE DE SÉCURITÉ ---
-    // Si le joueur est buggé (pas de loc, pas en mer), on le répare et on stop.
-    // Le frontend recevra l'erreur, rechargera la map, et le joueur sera débloqué.
-    if (!joueur.localisation && joueur.statut_voyage !== 'EN_MER') {
-        const spawn = await this.prisma.destinations.findFirst({ where: { nom: { contains: 'Fushia' } } });
-        if (spawn) {
-            await this.prisma.joueurs.update({
-                where: { id: userId },
-                data: { localisation_id: spawn.id, statut_voyage: 'A_QUAI' }
-            });
-            throw new BadRequestException("📍 Position recalibrée. Veuillez recliquer sur 'Mettre les voiles'.");
-        }
-    }
-
-    if (joueur.statut_voyage === 'EN_MER') throw new BadRequestException("Tu navigues déjà !");
-    
-    // On utilise le '!' car on a géré le cas null juste au dessus
-    if (joueur.localisation!.id === destinationId) throw new BadRequestException("Tu y es déjà.");
+    if (!joueur || !joueur.localisation) throw new BadRequestException("Position inconnue");
+    if (joueur.statut_voyage === 'EN_MER') throw new BadRequestException("Déjà en mer");
 
     const destination = await this.prisma.destinations.findUnique({ where: { id: destinationId } });
-    if (!destination) throw new BadRequestException("Destination inconnue.");
+    if (!destination) throw new BadRequestException("Destination inconnue");
 
-    // --- CALCULS ---
-    const x1 = joueur.localisation!.pos_x;
-    const y1 = joueur.localisation!.pos_y;
-    const x2 = destination.pos_x;
-    const y2 = destination.pos_y;
+    // 1. MÉTÉO DE TRAVERSÉE
+    const voyageMeteo = await this.getMeteoForLocation(undefined, 'MER');
 
-    // Distance Pythagore
-    const distance = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-
-    // Vitesse (Base 10 + 10% par niveau navire)
+    // 2. CALCUL DISTANCE / TEMPS
+    const dist = Math.sqrt(Math.pow(destination.pos_x - joueur.localisation.pos_x, 2) + Math.pow(destination.pos_y - joueur.localisation.pos_y, 2));
     const vitesse = 10 * (1 + ((joueur.niveau_navire || 1) * 0.1));
     
-    // Temps (Facteur 5 pour l'échelle)
-    let dureeMinutes = Math.ceil((distance / vitesse) * 5);
+    // Application du coefficient météo sur la durée
+    let dureeMinutes = Math.ceil(((dist / vitesse) * 5) * voyageMeteo.coeff_duree);
     if (dureeMinutes < 1) dureeMinutes = 1;
 
-    console.log(`🧮 Distance: ${distance.toFixed(0)} | Durée: ${dureeMinutes} min`);
+    // 3. GÉNÉRATION DU BUTIN (Le "cadeau" qu'on ouvrira à l'arrivée)
+    const lootSummary = await this.generateVoyageLoot(dureeMinutes, voyageMeteo, userId);
 
-    const arrivalTime = new Date(Date.now() + dureeMinutes * 60 * 1000);
-
-    // --- UPDATE BDD ---
     await this.prisma.joueurs.update({
         where: { id: userId },
         data: {
             statut_voyage: 'EN_MER',
-            trajet_depart_id: joueur.localisation!.id,
+            trajet_depart_id: joueur.localisation_id,
             trajet_arrivee_id: destinationId,
-            trajet_fin: arrivalTime,
-            localisation_id: null // On quitte le port
+            trajet_fin: new Date(Date.now() + dureeMinutes * 60000),
+            trajet_meteo_id: voyageMeteo.id, // On stocke l'ID de la météo choisie
+            trajet_summary: lootSummary as any // On stocke tout le butin pré-calculé
         }
     });
 
-    return {
-        success: true,
-        message: `Cap sur ${destination.nom} !`,
+    return { 
+        success: true, 
+        message: `L'ancre est levée ! Météo : ${voyageMeteo.nom}`, 
         duree: dureeMinutes,
-        arrivalTime: arrivalTime
+        meteo: voyageMeteo 
     };
-  }
+}
 
- // 3. VÉRIFIER L'ARRIVÉE (ET DÉBLOQUER L'EXPLORATION)
-  async checkTravelArrival(userId: string) {
-    const joueur = await this.prisma.joueurs.findUnique({ where: { id: userId } });
+// 3. VÉRIFIER L'ARRIVÉE (AVEC RÉSUMÉ ET LOOTS)
+async checkTravelArrival(userId: string) {
+    const joueur = await this.prisma.joueurs.findUnique({ 
+        where: { id: userId },
+        include: { trajet_meteo: true } 
+    });
     
-    if (!joueur || joueur.statut_voyage !== 'EN_MER') return { status: 'A_QUAI', message: "À quai." };
+    // Sécurité de base
+    if (!joueur || joueur.statut_voyage !== 'EN_MER') return { status: 'A_QUAI' };
 
+    // 🛠️ FIX ERREUR DATE & ID : On vérifie la présence avant de traiter
     if (!joueur.trajet_fin || !joueur.trajet_arrivee_id) {
-        await this.prisma.joueurs.update({
-            where: { id: userId },
-            data: { statut_voyage: 'A_QUAI', localisation_id: joueur.trajet_depart_id || 1, trajet_fin: null }
-        });
-        return { status: 'A_QUAI', message: "Erreur de navigation. Retour au port." };
+        return { status: 'EN_MER', message: "En attente de synchronisation..." };
     }
 
-    if (new Date() > new Date(joueur.trajet_fin)) {
-        const destination = await this.prisma.destinations.findUnique({ where: { id: joueur.trajet_arrivee_id } });
+    const trajetFin = new Date(joueur.trajet_fin as Date); // Force le type Date
+    const arriveeId = joueur.trajet_arrivee_id as number; // Force le type number
 
-        if (!destination) {
-             await this.prisma.joueurs.update({
+    if (new Date() > trajetFin) {
+        const destination = await this.prisma.destinations.findUnique({ 
+            where: { id: arriveeId } 
+        });
+        
+        if (!destination) throw new BadRequestException("Destination perdue.");
+
+        const summary = (joueur.trajet_summary as any) || { events: [], items: [], xp: 0 };
+        const itemsToGive = summary.items || [];
+
+        await this.prisma.$transaction(async (tx) => {
+            const { updateData } = this.calculateLevelUp(joueur, summary.xp || 0);
+            
+            const visitedList = joueur.iles_visitees || [];
+            const newVisitedList = visitedList.includes(destination.id) ? visitedList : [...visitedList, destination.id];
+
+            await tx.joueurs.update({
                 where: { id: userId },
-                data: { statut_voyage: 'A_QUAI', localisation_id: joueur.trajet_depart_id || 1 }
+                data: {
+                    ...updateData,
+                    statut_voyage: 'A_QUAI',
+                    localisation_id: destination.id,
+                    trajet_fin: null,
+                    trajet_depart_id: null,
+                    trajet_arrivee_id: null,
+                    trajet_summary: Prisma.DbNull,
+                    trajet_meteo_id: null,
+                    iles_visitees: newVisitedList
+                }
             });
-            return { status: 'A_QUAI', message: "Cap perdu." };
-        }
 
-        // ✅ ARRIVÉE RÉUSSIE + MISE À JOUR VISITE
-        // On récupère la liste actuelle pour ne pas écraser, et on ajoute l'ID si pas présent
-        const visitedList = joueur.iles_visitees || [];
-        const newVisitedList = visitedList.includes(destination.id) ? visitedList : [...visitedList, destination.id];
+            for (const item of itemsToGive) {
+                const existing = await tx.inventaire.findFirst({
+                    where: { joueur_id: userId, objet_id: item.id }
+                });
 
-        await this.prisma.joueurs.update({
-            where: { id: userId },
-            data: {
-                statut_voyage: 'A_QUAI',
-                localisation_id: destination.id,
-                trajet_fin: null,
-                trajet_depart_id: null,
-                trajet_arrivee_id: null,
-                iles_visitees: newVisitedList // On sauvegarde la découverte
+                if (existing) {
+                    await tx.inventaire.update({
+                        where: { id: existing.id },
+                        data: { quantite: { increment: item.quantite } }
+                    });
+                } else {
+                    await tx.inventaire.create({
+                        data: {
+                            joueur_id: userId,
+                            objet_id: item.id,
+                            quantite: item.quantite,
+                            stats_perso: Prisma.JsonNull // Correction ici aussi pour TypeScript
+                        }
+                    });
+                }
             }
         });
 
+        await this.clearCache(userId);
+        this.updateQuestProgress(userId, 'VOYAGE', 1);
+
         return { 
             status: 'ARRIVED', 
-            destination: destination,
-            message: `⚓ Arrivée à ${destination.nom} ! Exploration terminée.` 
+            message: `⚓ Arrivée à ${destination.nom} !`,
+            journal: {
+                destination: destination.nom,
+                meteo_nom: (joueur as any).trajet_meteo?.nom || "Inconnue",
+                meteo_emoji: (joueur as any).trajet_meteo?.emoji || "🌊",
+                events: summary.events,
+            },
+            rewards: {
+                xp: summary.xp,
+                items: itemsToGive
+            }
         };
     }
 
-    const timeLeft = Math.ceil((new Date(joueur.trajet_fin).getTime() - Date.now()) / 1000);
-    return { status: 'EN_MER', timeLeftSeconds: timeLeft, message: "En mer..." };
+    const timeLeft = Math.ceil((trajetFin.getTime() - Date.now()) / 1000);
+    return { status: 'EN_MER', timeLeftSeconds: timeLeft };
   }
 
   // ⚡ MÉTHODE PRIVÉE POUR RÉGÉNÉRER L'ÉNERGIE
@@ -4372,5 +4005,45 @@ async recolterExpedition(dto: { userId: string }) {
 
     return joueur;
   }
+
+  private async generateVoyageLoot(durationMin: number, meteo: any, userId: string) {
+    const config = (ACTIVITIES_CONFIG as any).VOYAGE_SYSTEM;
+    const summary = {
+        events: [] as string[],
+        xp: durationMin * config.xp_par_minute * meteo.coeff_xp,
+        berrys: 0,
+        items: [] as any[]
+    };
+
+    // Pour chaque minute de voyage, on tente un "roll" d'événement
+    for (let i = 0; i < durationMin; i++) {
+        if (Math.random() * 100 <= config.chance_evenement_par_minute * meteo.coeff_loot_chance) {
+            // Sélection d'un type d'événement (DÉBRIS, POISSONS, ÉPAVE)
+            const rollEvent = Math.random() * 100;
+            let eventType = config.evenements[0]; // Flotsam par défaut
+            
+            if (rollEvent < 10) eventType = config.evenements[2]; // Épave (Rare)
+            else if (rollEvent < 40) eventType = config.evenements[1]; // Poissons
+
+            summary.events.push(eventType.nom);
+
+            // Sélection d'un item au hasard dans la liste de l'événement
+            const randomItemName = eventType.loots[Math.floor(Math.random() * eventType.loots.length)];
+            const itemDb = await this.prisma.objets.findUnique({ where: { nom: randomItemName } });
+
+            if (itemDb) {
+                summary.items.push({
+                    id: itemDb.id,
+                    nom: itemDb.nom,
+                    image_url: itemDb.image_url,
+                    rarete: itemDb.rarete,
+                    quantite: 1
+                });
+            }
+        }
+    }
+
+    return summary;
+}
 }
 

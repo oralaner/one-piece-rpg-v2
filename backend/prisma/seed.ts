@@ -1023,75 +1023,32 @@ console.log('🧹 Nettoyage des dépendances...');
 
   await prisma.meteo_ref.deleteMany({});
 
-  const meteos = [
-    {
-      nom: "Grand Soleil",
-      emoji: "☀️",
-      desc: "Rien de spécial. Une belle journée pour naviguer.",
-      xp: 1.0,      // Normal
-      berrys: 1.0,  // Normal
-      reussite: 1.0,// Normal
-      duree: 1.0,   // Normal
-      loot: 1.0     // Normal
+  const newMeteos = [
+  { nom: "Grand Soleil", emoji: "☀️", type: "GLOBAL", poids: 50, xp: 1, berrys: 1, duree: 1, loot: 1, nrj: 1 },
+  { nom: "Vents Porteurs", emoji: "🌬️", type: "MER", poids: 20, xp: 1, berrys: 1, duree: 0.7, loot: 1, nrj: 0.8 },
+  { nom: "Orage Violent", emoji: "⛈️", type: "MER", poids: 15, xp: 1.5, berrys: 1, duree: 1.3, loot: 1.2, nrj: 1.5 },
+  { nom: "Brouillard Mystérieux", emoji: "🌫️", type: "MER", poids: 10, xp: 0.7, berrys: 0.7, duree: 1.2, loot: 3.0, nrj: 1.1 },
+  { nom: "Tempête de Sable", emoji: "🏜️", type: "TERRE", poids: 30, xp: 1.2, berrys: 0.5, duree: 1, loot: 0.8, nrj: 2.0 },
+  { nom: "Soleil de Plomb", emoji: "🔥", type: "TERRE", poids: 20, xp: 1.0, berrys: 1, duree: 1, loot: 1, nrj: 2.5 },
+  { nom: "Blizzard", emoji: "❄️", type: "GLOBAL", poids: 10, xp: 1.2, berrys: 1, duree: 1.5, loot: 1, nrj: 1.8 }
+];
+
+for (const m of newMeteos) {
+  await prisma.meteo_ref.upsert({
+    where: { nom: m.nom },
+    update: { 
+        type_zone: m.type, poids_aleatoire: m.poids, coeff_xp: m.xp, 
+        coeff_berrys: m.berrys, coeff_duree: m.duree, coeff_loot_chance: m.loot, coeff_energie: m.nrj 
     },
-    {
-      nom: "Tempête",
-      emoji: "⛈️",
-      desc: "Mer agitée ! Gains augmentés mais risques de dégâts.",
-      xp: 1.5,      // +50% XP
-      berrys: 1.5,  // +50% Berrys
-      reussite: 0.8,// -20% Taux de réussite (Danger)
-      duree: 1.0,
-      loot: 1.0
-    },
-    {
-      nom: "Brume Épaisse",
-      emoji: "🌫️",
-      desc: "Visibilité nulle. Moins de gains, mais on trouve des trésors cachés.",
-      xp: 0.5,      // -50% XP
-      berrys: 0.5,  // -50% Berrys
-      reussite: 1.0,
-      duree: 1.0,
-      loot: 2.0     // x2 Chance de Loot (Objets rares)
-    },
-    {
-      nom: "Aqua Laguna",
-      emoji: "🌊",
-      desc: "Le raz-de-marée ultime ! Survivre rend incroyablement fort.",
-      xp: 3.0,      // x3 XP (Survivre rend fort)
-      berrys: 1.0,  // Normal (ou tu peux mettre 3.0 aussi si tu veux)
-      reussite: 0.5,// -50% Taux de réussite (Très dangereux)
-      duree: 1.0,
-      loot: 1.0
-    },
-    {
-      nom: "Vent Arrière",
-      emoji: "🌬️",
-      desc: "Le vent souffle dans le bon sens. Navigation ultra rapide.",
-      xp: 1.0,
-      berrys: 1.0,
-      reussite: 1.0,
-      duree: 0.5,   // Durée réduite de 50% (Voyage 2x plus vite)
-      loot: 1.0
+    create: { 
+        nom: m.nom, emoji: m.emoji, description: "Conditions météo dynamiques", 
+        type_zone: m.type, poids_aleatoire: m.poids, coeff_xp: m.xp, 
+        coeff_berrys: m.berrys, coeff_duree: m.duree, coeff_loot_chance: m.loot, coeff_energie: m.nrj 
     }
-  ];
+  });
+}
 
-  for (const m of meteos) {
-    await prisma.meteo_ref.create({
-      data: {
-        nom: m.nom,
-        emoji: m.emoji,
-        description: m.desc,
-        coeff_xp: m.xp,
-        coeff_berrys: m.berrys,
-        coeff_reussite: m.reussite,
-        coeff_duree: m.duree,
-        coeff_loot_chance: m.loot
-      }
-    });
-  }
-
-  console.log(`✅ ${meteos.length} météos créées.`);
+  console.log(`✅ ${newMeteos.length} météos créées.`);
 
 
 // --------------------------------------------------------
