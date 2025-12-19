@@ -4045,5 +4045,26 @@ async checkTravelArrival(userId: string) {
 
     return summary;
 }
+
+// 1. Fix pour 'clickActivite'
+  // Cette méthode est utilisée par l'ancien bouton d'exploration
+  async clickActivite(dto: { userId: string }) {
+    // On redirige vers la logique de clic d'activité que nous avons créée
+    return this.doActivity(dto.userId); 
+  }
+
+  // 2. Fix pour 'recolterExpedition'
+  // Cette méthode est utilisée pour valider l'arrivée d'un voyage
+  async recolterExpedition(dto: { userId: string }) {
+    // On redirige vers la nouvelle logique d'arrivée qui gère le journal et les loots
+    return this.checkTravelArrival(dto.userId);
+  }
+
+  // 3. Fix pour 'getMeteo'
+  // Le controller appelle getMeteo() sans paramètres, on lui renvoie la météo globale
+  async getMeteo() {
+    // On appelle notre nouvelle fonction intelligente sans ID d'île (météo MER par défaut)
+    return this.getMeteoForLocation(undefined, 'MER');
+  }
 }
 

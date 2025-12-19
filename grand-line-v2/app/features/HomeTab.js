@@ -261,26 +261,6 @@ const HomeTab = ({ joueur, statsTotales, topJoueurs, topEquipages, onNavigate, t
                         </div>
                     </div>
 
-                    {/* --- CARTE 4 : RANG & EQUIPAGE --- */}
-                    <div className="md:col-span-2 grid grid-cols-2 gap-3">
-                        <div onClick={() => !isRankLocked && onNavigate('classement')} className="bg-slate-900/60 border border-white/5 p-4 rounded-2xl relative overflow-hidden group cursor-pointer hover:border-yellow-500/30 transition-all duration-300">
-                            {isRankLocked && <LockedOverlay label={`Niv ${LEVEL_REQ_CLASSEMENT}`} />}
-                            <div className={`flex items-center gap-3 ${isRankLocked ? 'blur-sm opacity-50' : ''}`}>
-                                <div className="w-10 h-10 rounded-full bg-yellow-500/10 flex items-center justify-center text-xl border border-yellow-500/20 shrink-0">
-                                    {rankPvP.img ? <img src={rankPvP.img} alt="" className="w-6 h-6 object-contain" /> : "🏆"}
-                                </div>
-                                <div className="overflow-hidden">
-                                    <h3 className="text-[9px] font-bold uppercase text-slate-500 tracking-widest truncate">Classement</h3>
-                                    <p className={`text-sm font-black truncate ${rankPvP.color}`}>{rankPvP.label}</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="bg-slate-900/40 border border-white/5 p-4 rounded-2xl flex items-center justify-center text-slate-600 font-bold text-xs border-dashed">
-                            🚧 Équipage 🚧
-                        </div>
-                    </div>
-
                     {/* 🔥🔥 CARTE 5 : ACTIVITÉS LOCALES (WIDGET) 🔥🔥 */}
                     <div className="md:col-span-2">
                         <ActivityWidget 
