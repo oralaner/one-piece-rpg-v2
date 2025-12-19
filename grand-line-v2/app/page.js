@@ -255,25 +255,36 @@ export default function Home() {
             <div className={`md:w-[350px] md:h-full md:shrink-0 p-2 md:p-4 z-10 flex flex-col ${activeTab ? 'hidden md:flex' : 'flex h-full'}`}>
                 <div className={`flex-1 overflow-y-auto custom-scrollbar rounded-3xl p-4 md:p-6 shadow-2xl relative border-2 ${currentTheme.panel} ${currentTheme.border}`}>
                     
-                    {/* Header Profil */}
-                    <div className="flex items-center gap-4 mb-4">
-                        <button 
-        onClick={() => setActiveTab(null)} 
-        className="relative group shrink-0 cursor-pointer active:scale-95 transition-transform"
-        title="Retour à l'accueil"
-    ></button>
-                        <div className="relative group shrink-0">
-                                <div className={`rounded-full p-[3px] ${currentTheme.btnPrimary} shadow-lg shadow-black/50 transition-transform group-hover:scale-105 duration-300`}>
-                                <div className="w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden bg-slate-900 border border-black/30 relative z-10">
-                                    {joueur.avatar_url && <img src={joueur.avatar_url} className="w-full h-full object-cover"/>}
-                                </div>
-                            </div>
-                            <div className={`absolute -bottom-1 -right-1 bg-slate-900 ${rankInfo.color} text-[9px] font-black px-2 py-0.5 rounded-full border border-slate-600 shadow-md z-20`}>
-                                {rankInfo.label}
+                                    {/* Header Profil */}
+                <div className="flex items-center gap-4 mb-4">
+                    {/* On transforme le conteneur en bouton cliquable */}
+                    <button 
+                        onClick={() => setActiveTab(null)} 
+                        className="relative group shrink-0 cursor-pointer active:scale-95 transition-transform"
+                        title="Retour à l'accueil"
+                    >
+                        <div className={`rounded-full p-[3px] ${currentTheme.btnPrimary} shadow-lg shadow-black/50 transition-transform group-hover:scale-105 duration-300`}>
+                            <div className="w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden bg-slate-900 border border-black/30 relative z-10">
+                                {joueur.avatar_url && (
+                                    <img 
+                                        src={joueur.avatar_url} 
+                                        className="w-full h-full object-cover" 
+                                        alt="Avatar"
+                                    />
+                                )}
                             </div>
                         </div>
-                        <div className="min-w-0 flex-1">
-                            <h2 className={`text-xl md:text-2xl font-black text-white tracking-tight drop-shadow-md truncate font-pirata`}>{joueur.pseudo}</h2>
+                        
+                        {/* Le badge de rang reste par-dessus */}
+                        <div className={`absolute -bottom-1 -right-1 bg-slate-900 ${rankInfo.color} text-[9px] font-black px-2 py-0.5 rounded-full border border-slate-600 shadow-md z-20`}>
+                            {rankInfo.label}
+                        </div>
+                    </button>
+
+                    <div className="min-w-0 flex-1 text-left"> {/* Ajout text-left pour compenser le bouton */}
+                        <h2 className={`text-xl md:text-2xl font-black text-white tracking-tight drop-shadow-md truncate font-pirata`}>
+                            {joueur.pseudo}
+                        </h2>
                             <button onClick={() => { game.chargerTitres(); game.setShowTitresModal(true); }} className="text-[10px] font-bold px-2 py-0.5 my-1 rounded border border-dashed border-slate-600 text-slate-400 hover:border-yellow-500 hover:text-yellow-400 hover:bg-yellow-500/10 transition-all duration-300 group block w-full text-left truncate">
                                 {joueur.titre_actuel ? <span className="text-yellow-500 italic">« {joueur.titre_actuel} »</span> : <span className="opacity-50 group-hover:opacity-100">+ Choisir un titre</span>}
                             </button>
