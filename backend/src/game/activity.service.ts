@@ -26,10 +26,13 @@ export class ActivityService {
     const now = new Date();
 
     const activitiesList = Object.values(ACTIVITIES_CONFIG).map((act: any) => {
-      const hasFacility = act.facilities_req.some((f: string) => facilities.includes(f));
-      const hasFaction = act.faction_req ? act.faction_req === joueur.faction : true;
-      if (!hasFacility || !hasFaction) return null;
+  // 🛡️ SÉCURITÉ : Si ce n'est pas une activité (pas d'ID ou pas de facilities_req), on l'ignore
+  if (!act.id || !act.facilities_req) return null;
 
+  const hasFacility = act.facilities_req.some((f: string) => facilities.includes(f));
+  const hasFaction = act.faction_req ? act.faction_req === joueur.faction : true;
+  
+  if (!hasFacility || !hasFaction) return null;
       const cdFin = cooldowns[act.id] ? new Date(cooldowns[act.id]) : null;
       const isOnCooldown = cdFin && cdFin > now;
       const timeLeft = isOnCooldown ? Math.ceil((cdFin.getTime() - now.getTime()) / 1000) : 0;
