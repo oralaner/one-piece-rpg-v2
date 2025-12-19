@@ -299,25 +299,25 @@ export class GameService {
   // 📜 CONFIGURATION DES QUÊTES QUOTIDIENNES
   // =================================================================
 
-  // =================================================================
-  // 📜 SYSTÈME DE QUÊTES QUOTIDIENNES
+ // =================================================================
+  // 📜 SYSTÈME DE QUÊTES QUOTIDIENNES (VERSION MISE À JOUR)
   // =================================================================
 
   // 1. CONFIGURATION DES TEMPLATES
+  // Adapté aux nouvelles mécaniques : Pêche, Énergie, Voyage
   private readonly QUEST_TEMPLATES = [
-      { type: 'ARENA_FIGHT', desc: "Combattre {x} fois dans l'arène", min: 3, max: 3, xp: 300, berrys: 1500 },
-      { type: 'VOYAGE', desc: "Terminer {x} voyages", min: 2, max: 2, xp: 400, berrys: 2000 },
-      { type: 'CASINO_PLAY', desc: "Jouer {x} fois au casino", min: 5, max: 5, xp: 100, berrys: 500 },
-      { type: 'ACTIVITY', desc: "Faire {x} activités", min: 3, max: 3, xp: 200, berrys: 800 },
+      { type: 'FISHING', desc: "Pêcher {x} fois du poisson", min: 2, max: 2, xp: 250, berrys: 10000 },
+      { type: 'VOYAGE', desc: "Voyager {x} fois vers une autre île", min: 1, max: 1, xp: 500, berrys: 25000 },
+      { type: 'ENERGY_SPENT', desc: "Consommer {x} points d'énergie", min: 20, max: 20, xp: 300, berrys: 15000 },
+      { type: 'ARENA_FIGHT', desc: "Combattre {x} fois dans l'arène", min: 3, max: 3, xp: 400, berrys: 20000 },
   ];
 
   // 2. GÉNÉRER LES QUÊTES
-async getDailyQuests(userId: string) {
-      
+  async getDailyQuests(userId: string) {
       const now = new Date();
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-      // 1. Chercher existantes
+      // 1. Chercher les quêtes existantes du jour
       const existingQuests = await this.prisma.quetes_journalieres.findMany({
           where: { 
               joueur_id: userId,
@@ -326,19 +326,22 @@ async getDailyQuests(userId: string) {
           orderBy: { est_recupere: 'asc' }
       });
 
-
-      // 2. Si déjà 4, on renvoie
+      // 2. Si on a déjà nos quêtes, on les renvoie
       if (existingQuests.length >= 4) {
           return existingQuests;
       }
 
-
-      // 3. Nettoyage et Génération
-      await this.prisma.quetes_journalieres.deleteMany({ where: { joueur_id: userId } });
+      // 3. Sinon, Nettoyage des anciennes quêtes (facultatif, selon ta préférence) 
+      // et Génération des nouvelles
+      await this.prisma.quetes_journalieres.deleteMany({ 
+          where: { 
+              joueur_id: userId,
+              date_creation: { lt: startOfDay } // On ne supprime que les quêtes des jours précédents
+          } 
+      });
 
       const newQuests: any[] = []; 
       
-      // Vérification que les templates existent
       if (!this.QUEST_TEMPLATES || this.QUEST_TEMPLATES.length === 0) {
           console.error(`[ERREUR] QUEST_TEMPLATES est vide ou indéfini !`);
           return [];
@@ -355,24 +358,29 @@ async getDailyQuests(userId: string) {
               objectif: objectif,
               avancement: 0,
               xp_reward: t.xp,
-              berrys_reward: t.berrys
+              berrys_reward: t.berrys,
+              date_creation: now // Assure la cohérence temporelle
           });
       }
 
-
+      // Création en masse
       await this.prisma.quetes_journalieres.createMany({ data: newQuests });
 
-      const finalResult = await this.prisma.quetes_journalieres.findMany({ where: { joueur_id: userId } });
-      
-      return finalResult;
+      // Récupération pour renvoyer les objets avec IDs
+      return await this.prisma.quetes_journalieres.findMany({ 
+          where: { 
+              joueur_id: userId,
+              date_creation: { gte: startOfDay }
+          } 
+      });
   }
 
-  // 3. METTRE À JOUR L'AVANCEMENT (C'est cette fonction qui manquait !)
+  // 3. METTRE À JOUR L'AVANCEMENT
+  // À appeler dans : VoyageService (VOYAGE), ActivityService (FISHING / ENERGY_SPENT), ArenaService (ARENA_FIGHT)
   async updateQuestProgress(userId: string, type: string, amount: number = 1) {
       const now = new Date();
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-      // On cherche les quêtes actives de ce type créées aujourd'hui
       const quests = await this.prisma.quetes_journalieres.findMany({
           where: {
               joueur_id: userId,
@@ -408,17 +416,13 @@ async getDailyQuests(userId: string) {
       if (quest.est_recupere) throw new BadRequestException("Récompense déjà récupérée.");
 
       await this.prisma.$transaction(async (tx) => {
-          // Marquer comme récupéré
+          // 1. Marquer comme récupéré
           await tx.quetes_journalieres.update({
               where: { id: questId },
               data: { est_recupere: true }
           });
 
-          // Donner la récompense
-          const joueur = await tx.joueurs.findUnique({ where: { id: userId } });
-          
-          // Note: Idéalement, on utiliserait calculateLevelUp ici aussi, 
-          // mais pour éviter les conflits de 'this' dans la transaction, on fait simple pour l'instant :
+          // 2. Donner la récompense au joueur (Correction : colonne 'xp')
           await tx.joueurs.update({
               where: { id: userId },
               data: { 
@@ -428,11 +432,14 @@ async getDailyQuests(userId: string) {
           });
       });
       
-      // On force un recalcul du cache pour que le joueur voit son niveau/xp à jour
-      // Si l'XP dépasse le max, le prochain combat ou activité déclenchera le Level Up visuel proprement.
+      // On vide le cache si tu en utilises un
       await this.clearCache(userId);
       
-      return { success: true, message: `Récompense : +${quest.xp_reward} XP, +${quest.berrys_reward} ฿` };
+      return { 
+          success: true, 
+          message: `Récompense récupérée !`,
+          rewards: { xp: quest.xp_reward, berrys: quest.berrys_reward }
+      };
   }
 
 // =================================================================
@@ -3115,28 +3122,33 @@ async createPlayer(userId: string, pseudo: string, faction: string) {
         effetTrouve = true;
     }
 
+// =========================================================
+    // CAS C : ÉNERGIE (Nourriture & Potions d'Énergie)
     // =========================================================
-    // CAS C : NOURRITURE (ÉNERGIE)
-    // =========================================================
-    // 👇 AJOUT DE 'PAIN' DANS LA LISTE
-    else if (itemType === 'NOURRITURE' || itemName.includes('VIANDE') || itemName.includes('REPAS') || itemName.includes('ÉNERGIE') || itemName.includes('ENERGY') ) {
+    else if (itemType === 'NOURRITURE' || itemStats.energie || itemName.includes('ÉNERGIE') || itemName.includes('ENERGY') || itemName.includes('PAIN') || itemName.includes('VIANDE')) {
         
         const energieActuelle = joueur.energie_actuelle ?? 0;
-        const energieMax = (joueur as any).energie_max ?? 10; 
+        // On récupère le MAX calculé (10 + niveau)
+        // Note: Ici on n'a pas accès facile au calcul max dynamique, on va supposer 10 + niveau
+        const energieMax = 10 + (joueur.niveau || 1); 
 
         if (energieActuelle >= energieMax) {
             throw new BadRequestException("Ton énergie est déjà au maximum !");
         }
 
-        // Si c'est du Pain, on peut aussi dire qu'il soigne un peu en plus de l'énergie si tu veux
-        // Mais pour l'instant, on le traite comme de l'énergie/nourriture standard
-        const gainEnergie = Number(itemStats.energie || 5); 
+        // On récupère le montant du gain (défaut 5)
+        // On cherche dans itemStats.energie (la nouvelle méthode propre)
+        let gainEnergie = Number(itemStats.energie || 0);
+
+        // Fallback pour les vieux items
+        if (gainEnergie === 0) gainEnergie = 5;
+
         const newEnergie = Math.min(energieMax, energieActuelle + gainEnergie); 
 
         updates.energie_actuelle = newEnergie;
-        message = `🍞 Miam ! Tu récupères ${newEnergie - energieActuelle} Énergie(s).`;
+        message = `⚡ Glouglou ! Tu récupères +${newEnergie - energieActuelle} Énergie !`;
         effetTrouve = true;
-    }
+    }5
 
     // =========================================================
     // FIN

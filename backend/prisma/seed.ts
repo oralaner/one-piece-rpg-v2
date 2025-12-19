@@ -800,6 +800,12 @@ for (const bot of bots) {
 
     { nom: "Botte trouée", image: "botte_trouee.png", rarete: "Commun", prix: "1", cat: "Ressource", craftable: "Non", achetable: "Non", loot: "Oui", util: "Déchet de pêche", uniq: "non" },
     { nom: "Arête de poisson", image: "arete.png", rarete: "Commun", prix: "1", cat: "Ressource", craftable: "Non", achetable: "Non", loot: "Oui", util: "Déchet", uniq: "non" },
+    // --- POTIONS D'ÉNERGIE ---
+    { nom: "Tonique d'Énergie", image: "tonique_energie.png", rarete: "Commun", prix: "500", cat: "Consommable", craftable: "Non", achetable: "Oui", loot: "Oui", util: "Rend +10 Énergie", uniq: "non", stats: { energie: 10 } },
+    { nom: "Infusion d'Énergie", image: "infusion_energie.png", rarete: "Rare", prix: "1 500", cat: "Consommable", craftable: "Oui", achetable: "Non", loot: "Oui", util: "Rend +20 Énergie", uniq: "non", stats: { energie: 20 } },
+    { nom: "Concentré d'Énergie", image: "concentre_energie.png", rarete: "Épique", prix: "5 000", cat: "Consommable", craftable: "Oui", achetable: "Non", loot: "Oui", util: "Rend +50 Énergie", uniq: "non", stats: { energie: 50 } },
+    { nom: "Élixir d'Énergie", image: "elixir_energie.png", rarete: "Légendaire", prix: "20 000", cat: "Consommable", craftable: "Oui", achetable: "Non", loot: "Oui", util: "Rend +100 Énergie", uniq: "non", stats: { energie: 100 } },
+    { nom: "Essence d'Énergie Pure", image: "essence_energie_pure.png", rarete: "Mythique", prix: "100 000", cat: "Consommable", craftable: "Non", achetable: "Non", loot: "Oui", util: "Rend +200 Énergie", uniq: "non", stats: { energie: 200 } },
     // --- NAVIRES (Doivent correspondre aux noms dans 'navires_ref') ---
     { nom: "Radeau de fortune", image: "radeau.png", rarete: "Commun", prix: "0", cat: "Navire", craftable: "Non", achetable: "Non", loot: "Non", util: "Vitesse x1.0", uniq: "oui", stats: { vitesse: 1.0, chance: 0 } },
     { nom: "Canot", image: "canot.png", rarete: "Commun", prix: "5 000", cat: "Navire", craftable: "Non", achetable: "Non", loot: "Non", util: "Vitesse x1.1 | Chance +5%", uniq: "oui", stats: { vitesse: 1.1, chance: 5 } },
@@ -916,6 +922,7 @@ console.log('🧹 Nettoyage des dépendances...');
 
   // 3. Liste Officielle des Recettes
   const rawRecettes = [
+    
     // --- NIVEAU 1 à 9 ---
     { nom: "Bol", categorie: "Menuiserie", niveau: 10, ingredients: [ {nom: "Bois", qte: 2} ] },
     { nom: "Clous", categorie: "Forge", niveau: 11, ingredients: [ {nom: "Ferraille", qte: 4} ] },
