@@ -257,6 +257,11 @@ export default function Home() {
                     
                     {/* Header Profil */}
                     <div className="flex items-center gap-4 mb-4">
+                        <button 
+        onClick={() => setActiveTab(null)} 
+        className="relative group shrink-0 cursor-pointer active:scale-95 transition-transform"
+        title="Retour à l'accueil"
+    ></button>
                         <div className="relative group shrink-0">
                                 <div className={`rounded-full p-[3px] ${currentTheme.btnPrimary} shadow-lg shadow-black/50 transition-transform group-hover:scale-105 duration-300`}>
                                 <div className="w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden bg-slate-900 border border-black/30 relative z-10">
